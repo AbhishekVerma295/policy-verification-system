@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Policy Verification System — Implementation Plan</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f9fafb;
+            padding: 20px;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            padding: 40px;
+        }
+        h1 {
+            color: #1f3864;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+            border-bottom: 3px solid #2e5c8a;
+            padding-bottom: 15px;
+        }
+        .subtitle {
+            color: #2e5c8a;
+            font-size: 1.3em;
+            margin-bottom: 30px;
+        }
+        h2 {
+            color: #2e5c8a;
+            margin-top: 40px;
+            margin-bottom: 15px;
+            font-size: 1.8em;
+        }
+        h3 {
+            color: #1f3864;
+            margin-top: 25px;
+            margin-bottom: 12px;
+            font-size: 1.2em;
+        }
+        p {
+            margin-bottom: 15px;
+            line-height: 1.8;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: white;
+            border: 1px solid #ddd;
+        }
+        th {
+            background: #1f3864;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+        }
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+        }
+        tr:nth-child(even) {
+            background: #f7f9fc;
+        }
+        tr:hover {
+            background: #eff3f9;
+        }
+        .note {
+            background: #eef3f9;
+            border-left: 4px solid #2e5c8a;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+            font-style: italic;
+            color: #3a5573;
+        }
+        code {
+            background: #f4f5f7;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: Consolas, monospace;
+            color: #a03060;
+            font-size: 0.9em;
+        }
+        pre {
+            background: #f4f5f7;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            margin: 15px 0;
+            font-family: Consolas, monospace;
+            font-size: 0.85em;
+            line-height: 1.4;
+            color: #24292f;
+            border: 1px solid #ddd;
+        }
+        .done {
+            background: #f1f8f4;
+            border-left: 4px solid #2e7d32;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+            color: #1b5e20;
+        }
+        .done:before {
+            content: "✓  ";
+            font-weight: bold;
+            color: #2e7d32;
+        }
+        .warning {
+            background: #fff4e5;
+            border-left: 4px solid #e8a33d;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+            color: #6d4c00;
+        }
+        ul {
+            margin-left: 25px;
+            margin-bottom: 15px;
+        }
+        li {
+            margin-bottom: 8px;
+        }
+        .phase {
+            background: #f9fafb;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .phase-number {
+            background: #2e5c8a;
+            color: white;
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+        .timeline {
+            margin: 30px 0;
+            padding: 20px;
+            background: #f0f4f8;
+            border-radius: 6px;
+            border: 1px solid #d4dce8;
+        }
+        .toc {
+            background: #f7f9fc;
+            border-left: 4px solid #2e5c8a;
+            padding: 20px;
+            margin: 30px 0;
+            border-radius: 4px;
+        }
+        .toc h3 {
+            margin-top: 0;
+        }
+        .toc ul {
+            list-style: none;
+            margin-left: 0;
+        }
+        .toc a {
+            color: #2e5c8a;
+            text-decoration: none;
+        }
+        .toc a:hover {
+            text-decoration: underline;
+        }
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+            }
+            h1 {
+                font-size: 1.8em;
+            }
+            h2 {
+                font-size: 1.4em;
+            }
+            table {
+                font-size: 0.9em;
+            }
+            td, th {
+                padding: 8px;
+            }
+        }
+        .footer {
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            color: #666;
+            text-align: center;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Policy Verification System</h1>
+        <p class="subtitle">Hallucination and Citation Verifier for Policy Question Answering</p>
+        <p style="text-align: center; color: #666; margin-bottom: 40px;">
+            <strong>Implementation Plan</strong> · Simple Language for Beginners
+        </p>
+
+        <div class="toc">
+            <h3>📋 What You're Building</h3>
+            <p>An AI system that answers questions about university policies and <strong>shows you the proof</strong>. Every answer points to the exact policy text it came from. If it can't find proof, it says nothing rather than making something up.</p>
+            <p><strong>Timeline:</strong> 8-12 weeks, working alone, ~10 hours per week.</p>
+        </div>
+
+        <h2>Big Decisions (Already Made)</h2>
+        <p>These are locked in. Don't change them.</p>
+        <table>
+            <tr>
+                <th>What</th>
+                <th>Decision</th>
+            </tr>
+            <tr>
+                <td><strong>Policy documents</strong></td>
+                <td>Download from 3-4 universities (about 20-25 documents total)</td>
+            </tr>
+            <tr>
+                <td><strong>How to store them</strong></td>
+                <td>Save a list of where they came from (not the files themselves)</td>
+            </tr>
+            <tr>
+                <td><strong>Python version</strong></td>
+                <td>Use Python 3.11 or 3.12 — your 3.14 will cause problems</td>
+            </tr>
+            <tr>
+                <td><strong>AI model</strong></td>
+                <td>Qwen3 4B first (faster while learning), upgrade to 8B later</td>
+            </tr>
+            <tr>
+                <td><strong>Search database</strong></td>
+                <td>Chroma (simple, works offline)</td>
+            </tr>
+            <tr>
+                <td><strong>Fact checker</strong></td>
+                <td>NLI model (says if evidence supports the claim)</td>
+            </tr>
+        </table>
+
+        <h2>The Two Decisions You Make First</h2>
+        <p>Before writing any code, decide these two things. Everything else depends on them.</p>
+
+        <h3>1. Citation ID Format</h3>
+        <p>How you'll identify which part of which policy said something.</p>
+        <p><strong>Example:</strong> <code>uni_a/academic_integrity/4.2</code></p>
+        <p>This means: "University A, Academic Integrity policy, section 4.2"</p>
+
+        <h3>2. Data Shapes (in schema.py)</h3>
+        <table>
+            <tr>
+                <th>Name</th>
+                <th>What it contains</th>
+            </tr>
+            <tr>
+                <td><code>Document</code></td>
+                <td>University, policy name, title, source, sections</td>
+            </tr>
+            <tr>
+                <td><code>Chunk</code></td>
+                <td>ID, text, citation ID, university, policy type, section</td>
+            </tr>
+            <tr>
+                <td><code>Claim</code></td>
+                <td>The statement, citation IDs it came from</td>
+            </tr>
+            <tr>
+                <td><code>ClaimVerdict</code></td>
+                <td>Claim, is it supported/refuted/unclear, score, evidence chunks</td>
+            </tr>
+            <tr>
+                <td><code>Answer</code></td>
+                <td>Question, kept claims, removed claims, did we refuse, why</td>
+            </tr>
+        </table>
+
+        <div class="note">
+            Use Pydantic. It catches bugs where your AI returns garbage shaped data.
+        </div>
+
+        <h2>10 Phases (Week by Week)</h2>
+
+        <div class="phase">
+            <div class="phase-number">PHASE 0</div>
+            <h3>Setup & Spikes (Week 1)</h3>
+            <p><strong>"Spike" = quick test before building on it</strong></p>
+            <p>Do three tests:</p>
+            <ul>
+                <li><strong>Corpus test:</strong> Download one policy from 5 different universities. Keep the 3-4 that extract cleanly.</li>
+                <li><strong>VRAM test:</strong> Run Qwen3 4B with embedder + fact-checker on CPU. Check you have enough memory.</li>
+                <li><strong>NLI test:</strong> Write 20 fake claim/passage pairs. Test 2-3 fact-checker models.</li>
+            </ul>
+            <div class="done">Done when: `import policyverify` works · schema exists · manifest lists your universities</div>
+        </div>
+
+        <div class="phase">
+            <div class="phase-number">PHASE 1</div>
+            <h3>Ingestion (Week 2)</h3>
+            <p>Get policies from the internet into a consistent format.</p>
+            <p><code>fetch.py</code> → <code>extract.py</code> → <code>normalize.py</code></p>
+            <div class="done">Done when: All 20-25 documents are valid · You've read 3 by hand to confirm</div>
+        </div>
+
+        <div class="phase">
+            <div class="phase-number">PHASE 2</div>
+            <h3>Chunking & Index (Week 3)</h3>
+            <p>Build the searchable database.</p>
+            <div class="warning">Write a manifest recording which embedding model built the index. If you rebuild with a different model and forget, search silently returns nonsense.</div>
+            <div class="done">Done when: Index builds in one command · Manual search returns relevant chunks</div>
+        </div>
+
+        <div class="phase">
+            <div class="phase-number">PHASE 3</div>
+            <h3>Retrieval & Generation (Week 4)</h3>
+            <p>Make the AI produce answers.</p>
+            <div class="note">Use Ollama's JSON mode so the AI outputs valid JSON. Never generate prose and parse it back.</div>
+            <div class="done">Done when: `scripts/ask.py "question"` returns claims with citations</div>
+        </div>
+
+        <div class="phase">
+            <div class="phase-number">PHASE 4</div>
+            <h3>The Verifier (Weeks 5-6) — <strong>The Core</strong></h3>
+            <p>This is the important part. Spend your time here.</p>
+            <ul>
+                <li><strong>nli.py:</strong> Does passage support claim? Output: supported / refuted / unclear + score</li>
+                <li><strong>numeric.py:</strong> Do numbers match? ("75%" ≠ "80%")</li>
+                <li><strong>citation.py:</strong> Does cited section exist? Does passage support claim?</li>
+            </ul>
+            <div class="done">Done when: Every claim has a verdict, score, and evidence IDs</div>
+        </div>
+
+        <div class="phase">
+            <div class="phase-number">PHASE 5</div>
+            <h3>Abstention & Correction (Week 7)</h3>
+            <p>Teach it to refuse. Move unsupported claims into `claims_removed` instead of deleting them.</p>
+            <div class="done">Done when: System refuses unanswerable questions and explains why</div>
+        </div>
+
+        <div class="phase">
+            <div class="phase-number">PHASE 6</div>
+            <h3>Adversarial Dataset (Week 8)</h3>
+            <p>60-80 trick questions across five categories:</p>
+            <ul>
+                <li>Cross-university confusion (your signature trap)</li>
+                <li>Numeric traps ("75%" vs "80%")</li>
+                <li>Unanswerable but plausible (test abstention)</li>
+                <li>Negation/exceptions ("except when...")</li>
+                <li>False premise questions</li>
+            </ul>
+            <div class="warning"><strong>Split into tuning set and held-out test set.</strong> Never tune and test on the same questions.</div>
+        </div>
+
+        <div class="phase">
+            <div class="phase-number">PHASE 7</div>
+            <h3>Streamlit UI (Week 9)</h3>
+            <p>Question box · university filter · color-coded claims · evidence · abstention banner · removed-claims panel</p>
+            <div class="done">Done when: UI and CLI give identical verdicts (proof they share one core)</div>
+        </div>
+
+        <div class="phase">
+            <div class="phase-number">PHASE 8</div>
+            <h3>Evaluation (Week 10)</h3>
+            <p>Measure how well it works with five metrics:</p>
+            <table>
+                <tr>
+                    <th>Metric</th>
+                    <th>What it means</th>
+                </tr>
+                <tr>
+                    <td><strong>Claim P/R</strong></td>
+                    <td>Are "supported" claims really supported?</td>
+                </tr>
+                <tr>
+                    <td><strong>Citation accuracy</strong></td>
+                    <td>Cited section exists AND supports claim</td>
+                </tr>
+                <tr>
+                    <td><strong>Hallucination rate</strong></td>
+                    <td>% of claims not backed by evidence</td>
+                </tr>
+                <tr>
+                    <td><strong>Abstention quality</strong></td>
+                    <td>How many unanswerable questions did you refuse?</td>
+                </tr>
+                <tr>
+                    <td><strong>Latency</strong></td>
+                    <td>How long it takes (retrieve / generate / verify)</td>
+                </tr>
+            </table>
+            <div class="done">Done when: One command produces the metrics table</div>
+        </div>
+
+        <div class="phase">
+            <div class="phase-number">PHASE 9</div>
+            <h3>Hardening & Deliverables (Weeks 11-12)</h3>
+            <p>Polish and finish:</p>
+            <ul>
+                <li>Add hybrid retrieval (BM25 + dense, ~10 lines)</li>
+                <li>Error analysis (pick 15 failures, categorize them)</li>
+                <li>README (people read this, not your code)</li>
+                <li>Architecture diagram</li>
+                <li>5-minute demo script</li>
+            </ul>
+        </div>
+
+        <h2>Things to Watch Out For</h2>
+        <table>
+            <tr>
+                <th>Problem</th>
+                <th>How to fix it</th>
+            </tr>
+            <tr>
+                <td>PDF extraction is garbage</td>
+                <td>Pick universities by extraction quality in week 1; prefer HTML</td>
+            </tr>
+            <tr>
+                <td>Qwen returns invalid JSON</td>
+                <td>JSON mode + Pydantic + one retry + fail loudly</td>
+            </tr>
+            <tr>
+                <td>NLI model weak on policy text</td>
+                <td>Test in week 1, not week 6. Fallback: add LLM judge tier</td>
+            </tr>
+            <tr>
+                <td>Run out of VRAM</td>
+                <td>Start with 4B; confirm embedder and NLI are on CPU</td>
+            </tr>
+            <tr>
+                <td>Chunks wrong size</td>
+                <td>Make it a config value; inspect real chunks early</td>
+            </tr>
+        </table>
+
+        <h2>How You Know You're Done</h2>
+        <div class="done">✓ pytest passes without a GPU</div>
+        <div class="done">✓ One command each: rebuild corpus, build index, run evaluation</div>
+        <div class="done">✓ Streamlit and CLI give identical verdicts</div>
+        <div class="done">✓ System abstains on unanswerable questions</div>
+        <div class="done">✓ System attributes policies to the right university</div>
+
+        <h2>If You Fall Behind</h2>
+        <p>Cut in this order:</p>
+        <ol>
+            <li>Hybrid retrieval (nice to have)</li>
+            <li>Adversarial set down to 40 items and 3 categories</li>
+            <li>University filter in the UI</li>
+        </ol>
+        <div class="warning"><strong>NEVER cut:</strong> The verifier · Abstention · Claim-level evidence view · Evaluation harness. Those four ARE the project.</div>
+
+        <h2>Quick Reference</h2>
+        <h3>Hardest parts:</h3>
+        <ul>
+            <li>The verifier (spend time thinking here)</li>
+            <li>Citation scheme (decide early)</li>
+            <li>Data shapes (get Pydantic right first)</li>
+        </ul>
+        <h3>Easiest wins:</h3>
+        <ul>
+            <li>Numeric guard (catches real errors, ~30 lines)</li>
+            <li>Citation existence check (deterministic)</li>
+            <li>Progress tracker (make threshold a config value)</li>
+        </ul>
+        <h3>Most common failures:</h3>
+        <ul>
+            <li>Model/index mismatch (write the index manifest!)</li>
+            <li>Parsing prose claims (use JSON contract)</li>
+            <li>Tuning and testing on same questions (split your dataset!)</li>
+        </ul>
+
+        <h2>Environment Setup</h2>
+        <pre>
+# Create venv
+python -m venv venv
+source venv/Scripts/activate
+
+# Install Python 3.11 or 3.12 first
+# (your 3.14 will fight with PyTorch)
+
+# Install key packages
+pip install ollama pydantic chroma-db torch transformers streamlit pytest
+
+# Confirm
+python -m pip list | grep -E "pydantic|chroma|transformers"
+ollama --version</pre>
+
+        <div class="footer">
+            <p>Policy Verification System — Implementation Plan (Simplified)</p>
+            <p>Start with <code>schema.py</code>. Get that right, and everything else flows.</p>
+            <p style="margin-top: 15px; color: #999;">Generated August 2026</p>
+        </div>
+    </div>
+</body>
+</html>

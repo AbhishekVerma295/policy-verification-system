@@ -1,0 +1,33 @@
+# Tooling configuration.
+#
+# Dependencies live in requirements.txt, not here. This file only configures
+# the tools (pytest, ruff), which keeps installation as one obvious command.
+
+[tool.pytest.ini_options]
+# Puts src/ on the import path, so tests can `import policyverify` without
+# needing an editable install. This is the one line that makes the src/ layout
+# painless to work with.
+pythonpath = ["src"]
+testpaths = ["tests"]
+# -q keeps output short; -ra shows a summary of anything skipped or failed.
+addopts = "-q -ra"
+
+[tool.ruff]
+# The linter. Catches unused imports, undefined names, and similar mistakes
+# that are easy to make and annoying to debug.
+line-length = 100
+target-version = "py312"
+src = ["src", "tests", "scripts", "spikes"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes: undefined names, unused imports
+    "I",   # import sorting
+    "UP",  # prefer modern Python syntax
+    "B",   # common bug patterns
+]
+ignore = [
+    "E501",  # long lines: the formatter handles these, and comments explaining
+             # a decision are worth more than a hard character limit
+]

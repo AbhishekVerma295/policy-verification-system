@@ -1,0 +1,53 @@
+# --- The corpus ------------------------------------------------------------
+# We deliberately do NOT commit the policy documents themselves.
+#
+# Two reasons:
+#   1. Copyright. University policies are published publicly but are still
+#      owned by the university. Committing a list of URLs is clearly fine;
+#      re-publishing their PDFs is murkier.
+#   2. It is better engineering. data/manifest.yaml plus the ingestion code
+#      rebuilds the exact corpus from source, and the checksums prove you got
+#      the same bytes. That beats a folder of binaries nobody can verify.
+#
+# data/manifest.yaml IS committed - it is the recipe. See the negation below.
+data/raw/
+data/processed/
+data/index/
+!data/manifest.yaml
+
+# --- Python ----------------------------------------------------------------
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# --- Models ----------------------------------------------------------------
+# Hugging Face caches downloaded models here. They are large and reproducible
+# from the model names already recorded in config.yaml.
+.cache/
+models/
+
+# --- Run logs --------------------------------------------------------------
+# Individual run logs are local working data. Committed evaluation results go
+# in eval/results/ as small summary files, so those are kept.
+*.jsonl
+!eval/adversarial.jsonl
+
+# --- Editors and OS --------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+desktop.ini
+
+# --- Secrets ---------------------------------------------------------------
+# Nothing in this project needs a key today, since everything runs locally.
+# This is here so that stays true by accident as well as on purpose.
+.env
+.env.*
+!.env.example
+*.key
+secrets.yaml

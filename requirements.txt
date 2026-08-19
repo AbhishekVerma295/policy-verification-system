@@ -1,0 +1,40 @@
+# Policy Verification System - dependencies
+#
+# IMPORTANT: install CPU-only torch FIRST, then this file:
+#
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+#   pip install -r requirements.txt
+#
+# Why CPU-only torch: Qwen runs through Ollama, which has its own runtime and
+# does not use torch at all. Torch is only needed for the embedding model and
+# the NLI fact-checker, and both of those run on CPU by design so that the
+# whole 8 GB of VRAM stays free for Qwen. The CPU wheel is ~200 MB instead of
+# ~2.5 GB for the CUDA one.
+
+# --- Data contracts -------------------------------------------------------
+pydantic>=2.9
+pyyaml>=6.0
+
+# --- Ingestion (Phase 1) --------------------------------------------------
+requests>=2.32
+pymupdf>=1.24            # PDF text extraction
+beautifulsoup4>=4.12     # HTML parsing
+lxml>=5.3                # fast parser backend for BeautifulSoup
+
+# --- Embeddings + verification (Phase 2/4, CPU) ---------------------------
+sentence-transformers>=3.0
+transformers>=4.44
+
+# --- Vector store (Phase 2) -----------------------------------------------
+chromadb>=0.5
+
+# --- LLM client (Phase 3) -------------------------------------------------
+ollama>=0.3
+
+# --- UI (Phase 7) ---------------------------------------------------------
+streamlit>=1.38
+
+# --- Evaluation + dev -----------------------------------------------------
+pandas>=2.2
+pytest>=8.3
+ruff>=0.6                # linter; configured in pyproject.toml

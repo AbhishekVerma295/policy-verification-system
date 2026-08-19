@@ -1,0 +1,67 @@
+# Policy Verification System - all settings in one place.
+#
+# Every value here has a default in src/policyverify/config.py, so this file
+# only needs to list what you want to change. Delete a line and the default
+# takes over.
+#
+# The values you will actually touch while building:
+#   llm.model                     -> qwen3:4b while learning, qwen3:8b later
+#   retrieval.top_k               -> how many passages to pull per question
+#   abstention.min_claim_score    -> how strict the system is (tune in Phase 6)
+
+paths:
+  manifest: data/manifest.yaml
+  raw: data/raw
+  processed: data/processed
+  index: data/index
+  runs: eval/results
+
+embedding:
+  # Turns text into vectors so we can search by meaning, not just keywords.
+  # Runs on CPU so the whole GPU stays free for Qwen.
+  model_name: BAAI/bge-base-en-v1.5
+  device: cpu
+  batch_size: 32
+  query_prefix: "Represent this sentence for searching relevant passages: "
+
+chunking:
+  # Split on headings, so each chunk is a whole section and a citation like
+  # "4.2" points at something real. These limits are only a fallback for
+  # sections that are unusually long or short.
+  max_chars: 1800
+  min_chars: 120
+  overlap_chars: 150
+
+retrieval:
+  top_k: 6
+  # Our main defence against answering with the wrong university's policy.
+  enable_university_filter: true
+
+llm:
+  backend: ollama
+  # Start on 4b: it is faster to iterate with and leaves plenty of VRAM spare.
+  # Move to qwen3:8b once the pipeline works end to end.
+  model: qwen3:4b
+  # 0 means the same question gives the same answer every time. Required for
+  # debugging and evaluation - not a style choice.
+  temperature: 0.0
+  timeout_seconds: 120
+  num_ctx: 8192
+
+nli:
+  # The fact-checker. Decides whether a passage actually proves a claim.
+  # Confirm this choice by running: python spikes/spike_nli.py
+  model_name: MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli
+  device: cpu
+  entailment_threshold: 0.5
+
+verification:
+  numeric_exact_match: true
+  fail_on_missing_citation: true
+
+abstention:
+  # Tune these on the TUNING half of the adversarial set in Phase 6.
+  # Report your final numbers on the held-out half only.
+  min_claim_score: 0.5
+  min_supported_claims: 1
+  min_retrieval_score: 0.25

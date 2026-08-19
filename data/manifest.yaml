@@ -1,0 +1,127 @@
+# The corpus manifest - the list of policy documents this system answers over.
+#
+# WHY THIS FILE EXISTS
+# --------------------
+# We commit this list, not the PDFs themselves. Two reasons:
+#
+#   1. Copyright. University policies are published publicly but are still
+#      owned by the university. Sharing a list of URLs is clearly fine;
+#      re-publishing their PDFs is murkier. A manifest sidesteps that.
+#   2. It is better engineering. Anyone can rebuild the exact corpus from
+#      source, and the checksums prove they got the same bytes you did.
+#
+# SCOPE DECISION (2026-08-14)
+# ----------------------------
+# This corpus covers ONE institution - SRM Institute of Science and
+# Technology, Kattankulathur - rather than the 3-4 originally planned.
+# That is a deliberate simplification, not a shortcut, but it does remove
+# one thing the original design relied on: "cross-university confusion"
+# (the same question having a different right answer at a different
+# school) was meant to be the system's signature hallucination trap in
+# the Phase 6 adversarial set.
+#
+# Single institution, single source of truth per policy type, is not a
+# meaningfully harder retrieval problem on its own. SRM's own documents
+# offer a natural, very close substitute: several of these documents come
+# in more than one dated version (Academic Regulations 2018, 2020, 2021,
+# separate PG regulations, ...), and different programmes/years genuinely
+# have different rules under the same institution. "Which year's
+# regulations apply to a student who joined in 2019?" is a realistic trap
+# with the same shape as the university-confusion one - same institution,
+# different rule, easy to answer with the wrong one. If you want that
+# trap category, add 1-2 more dated regulation PDFs below later; it is
+# not required to proceed through Phase 1-5.
+#
+# All 7 candidate URLs below were run through spikes/spike_corpus.py on
+# 2026-08-14 and scored GOOD. One real finding from that spike: the HTML
+# pages do not wrap their content in <main>/<article>, so raw extraction
+# currently includes SRM's site navigation menu as boilerplate at the top
+# of every page. extract.py (Phase 1) needs a small SRM-specific rule to
+# strip that block before chunking - it is not fixed yet.
+#
+# HOW TO ADD MORE POLICIES LATER
+# -------------------------------
+# Run the spike on any new candidate URL first, then add it here in the
+# same shape:
+#
+#     python spikes/spike_corpus.py <url>
+#
+# FIELD REFERENCE
+# ---------------
+#   university      slug, lowercase + underscores. Becomes part of every
+#                   citation ID, so keep it short: srm, not srm_institute
+#   name            display name, shown in the UI
+#   policies        one entry per document. One document per policy type -
+#                   where SRM published more than one source for the same
+#                   topic, the richer/cleaner one was chosen; see notes.
+#     type          one of: attendance, examination, academic_integrity,
+#                   scholarship, residence, code_of_conduct
+#     title         the document's own title
+#     url           direct link to the publicly accessible document
+#     format        html or pdf
+#     retrieved_at  the date this entry was added (YYYY-MM-DD)
+#     checksum      sha256 of the raw bytes; leave blank, fetch.py fills it
+#                   in on first download (Phase 1) so later re-runs can
+#                   detect if the university silently changed the document
+
+universities:
+  - university: srm
+    name: "SRM Institute of Science and Technology, Kattankulathur"
+    policies:
+      - type: attendance
+        title: "Academic Regulations 2021 - UG / Integrated PG Degree Programmes"
+        url: "https://webstor.srmist.edu.in/web_assets/downloads/2023/b-tech-mtech-ntegrated-2021-regulations.pdf"
+        format: pdf
+        retrieved_at: "2026-08-14"
+        checksum: ""
+        # note: this document also covers examinations, grading, CGPA and
+        # degree eligibility - a large, multi-topic regulations document,
+        # not a standalone attendance policy. No standalone attendance page
+        # exists at SRM; the 75% minimum attendance rule lives inside this
+        # PDF. Extra sections beyond attendance will still get chunked and
+        # indexed, which is fine - they just will not be your primary
+        # attendance-question source, and they add realistic retrieval noise.
+
+      - type: examination
+        title: "Examination Policy"
+        url: "https://www.srmist.edu.in/policies/examination-policy/"
+        format: html
+        retrieved_at: "2026-08-14"
+        checksum: ""
+
+      - type: academic_integrity
+        title: "Plagiarism Policy of SRM Institute of Science and Technology"
+        url: "https://webstor.srmist.edu.in/web_assets/srm_mainsite/files/2016/srm_university_plagiarism_policy_2017.pdf"
+        format: pdf
+        retrieved_at: "2026-08-14"
+        checksum: ""
+        # note: dated 2017 (predates the "SRM Institute of Science and
+        # Technology" rebrand - filename still says srm_university). It is
+        # the only academic-integrity/plagiarism document findable on SRM's
+        # official domains as of 2026-08-14. Worth a quick manual check for
+        # a newer version before you rely on it for your demo.
+
+      - type: scholarship
+        title: "Scholarship Policy"
+        url: "https://www.srmist.edu.in/policies/scholarship-policy/"
+        format: html
+        retrieved_at: "2026-08-14"
+        checksum: ""
+
+      - type: residence
+        title: "SRMIST Hostels Rules and Regulations (updated Jan 2025)"
+        url: "https://webstor.srmist.edu.in/web_assets/downloads/2024/srm-hostel-rules-2025.pdf"
+        format: pdf
+        retrieved_at: "2026-08-14"
+        checksum: ""
+        # note: SRM also has a shorter HTML summary at
+        # /policies/hostel-policy/ - this PDF was chosen instead because it
+        # is more detailed (33,854 vs 17,345 extracted characters) and more
+        # current (Jan 2025 update).
+
+      - type: code_of_conduct
+        title: "Code of Conduct for Students"
+        url: "https://www.srmist.edu.in/policies/code-of-conduct-for-students/"
+        format: html
+        retrieved_at: "2026-08-14"
+        checksum: ""
