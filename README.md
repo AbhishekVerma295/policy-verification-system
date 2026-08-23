@@ -220,8 +220,8 @@ the same questions would only prove it works on the questions it was tuned for.
 | Phase | Scope | Status |
 |---|---|---|
 | 0 | Foundations, data contracts, three spikes, corpus locked | ✅ done |
-| 1 | Ingestion — documents to clean `Document` objects | next |
-| 2 | Chunking and the vector index | |
+| 1 | Ingestion — documents to clean `Document` objects | ✅ done |
+| 2 | Chunking and the vector index | next |
 | 3 | Retrieval and structured generation | |
 | 4 | **The verifier** — NLI, numeric guards, citation checks | |
 | 5 | Abstention and transparent correction | |
@@ -235,6 +235,12 @@ the same questions would only prove it works on the questions it was tuned for.
 - **Corpus** — all 6 SRM sources scored GOOD on extraction quality (`spikes/spike_corpus.py`, 2026-08-14)
 - **NLI** — `MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli` won: 90% overall, **100% on numeric traps** (the "75% vs 80%" errors that matter most here). Known weak spot to carry into Phase 4: scope confusion — e.g. mistaking a postgraduate-only rule for one that applies to all students. Config already set to this model.
 - **VRAM** — peak 3.9 GB of 8 GB with Qwen3 4B, embedder and NLI all loaded together. 4.25 GB headroom; qwen3:8b is a safe upgrade later.
+
+**Phase 1 results** (`python scripts/ingest.py`, run for real against all 6 live SRM documents on 2026-08-19):
+
+- **147 sections** produced across 6 documents — run it yourself and check `data/processed/*/*.txt`
+- Two extraction bugs were found and fixed by inspecting real output, not assumed away: (1) SRM's HTML pages hide their real body prose alongside a sidebar menu, a mega-menu and a breadcrumb, none of which are wrapped in semantic `<nav>`/`<footer>` tags — fixed with SRM-specific CSS-class strips in `extract.py`; (2) PDF running headers (e.g. "SRM INSTITUTE OF SCIENCE AND TECHNOLOGY" repeating once per page) and enumerated list items (e.g. "1. All examinations undertaken shall be cancelled…") were both being mistaken for section headings — fixed with a repeated-line filter and a title-case-majority check in `normalize.py`
+- **Known remaining limitations**, left as documented rather than chased further: a handful of address/table-of-contents fragments still occasionally get picked up as spurious tiny sections; documents that mix Roman-numeral sub-headings ("II. ADMISSION TO EXAMINATIONS") with the two detected styles have those sub-headings folded into their parent section rather than split out separately. Neither loses content or produces a wrong citation — just a coarser grain in a few spots.
 
 ---
 
