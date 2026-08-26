@@ -25,6 +25,7 @@ from policyverify.schema import (
     DraftAnswer,
     PolicyType,
     Section,
+    SourceFormat,
     Timings,
     VerdictStatus,
 )
@@ -100,10 +101,10 @@ def test_citation_tolerates_surrounding_whitespace():
 # ---------------------------------------------------------------------------
 
 
-def test_section_key_prefers_document_numbering(sample_section: Section):
-    """When the document numbers its own sections, use those numbers - that is
-    what a reader would actually quote."""
-    assert sample_section.section_key() == "4.2"
+def test_section_key_combines_number_and_heading(sample_section: Section):
+    """Both halves are needed: the number is what a reader quotes, and the
+    heading is what makes it unique when numbering restarts mid-document."""
+    assert sample_section.section_key() == "4.2-minimum_attendance"
 
 
 def test_section_key_falls_back_to_heading_slug():
@@ -119,16 +120,100 @@ def test_section_key_handles_awkward_headings():
     assert CitationID.is_valid(f"uni_a/attendance/{key}")
 
 
+def test_section_key_caps_very_long_headings():
+    """Some headings are a whole sentence; an unbounded citation ID would be
+    unreadable and awkward to quote."""
+    section = Section(
+        heading="Rules and Regulation for Exams Functions Related to the Conduction "
+        "of Internal Assessment and End Semester Examinations",
+        text="Some text here.",
+    )
+    key = section.section_key()
+    assert len(key) <= 40
+    assert not key.endswith("_")
+    assert CitationID.is_valid(f"srm/examination/{key}")
+
+
 def test_section_rejects_empty_text():
     with pytest.raises(ValidationError):
         Section(heading="Empty", text="   ")
 
 
-def test_document_builds_citation_for_section(
-    sample_document: Document, sample_section: Section
-):
-    cid = sample_document.citation_for(sample_section)
-    assert cid.render() == "uni_a/attendance/4.2"
+def test_document_builds_citations_aligned_with_sections(sample_document: Document):
+    citations = sample_document.citations()
+    assert len(citations) == len(sample_document.sections)
+    assert citations[0].render() == "uni_a/attendance/4.2-minimum_attendance"
+
+
+def _doc_with_sections(sections: list[Section]) -> Document:
+    from datetime import date
+
+    return Document(
+        doc_id="srm/scholarship",
+        university="srm",
+        university_name="SRM Institute of Science and Technology",
+        policy_type=PolicyType.SCHOLARSHIP,
+        title="Scholarship Policy",
+        source_url="https://example.srmist.edu.in/scholarship",
+        source_format=SourceFormat.HTML,
+        retrieved_at=date(2026, 8, 19),
+        checksum="a" * 64,
+        sections=sections,
+    )
+
+
+def test_citations_are_unique_when_headings_repeat():
+    """Real failure from SRM's Code of Conduct: six separate sections all
+    headed "Consequence", none numbered. Without disambiguation they would
+    all claim the same citation, making "does the cited section support this
+    claim?" unanswerable."""
+    doc = _doc_with_sections(
+        [
+            Section(heading="Consequence", text="First consequence text."),
+            Section(heading="Consequence", text="Second consequence text."),
+            Section(heading="Consequence", text="Third consequence text."),
+        ]
+    )
+    rendered = [c.render() for c in doc.citations()]
+    assert len(set(rendered)) == 3, "citations must be unique"
+    assert rendered[0].endswith("/consequence")
+    assert rendered[1].endswith("/consequence-2")
+    assert rendered[2].endswith("/consequence-3")
+
+
+def test_citations_are_unique_when_numbering_restarts():
+    """Real failure from SRM's scholarship page: it contains several
+    independent numbered lists, so "2" appears repeatedly meaning different
+    things. The heading slug separates them."""
+    doc = _doc_with_sections(
+        [
+            Section(number="2", heading="SRM Merit Scholarship", text="Merit text."),
+            Section(number="2", heading="CLAT Score", text="CLAT text."),
+        ]
+    )
+    rendered = [c.render() for c in doc.citations()]
+    assert len(set(rendered)) == 2
+    assert rendered[0].endswith("/2-srm_merit_scholarship")
+    assert rendered[1].endswith("/2-clat_score")
+
+
+def test_citations_all_valid_and_unique_on_a_messy_document():
+    """Belt and braces: whatever the input, every citation must parse and no
+    two may collide."""
+    doc = _doc_with_sections(
+        [
+            Section(number="1", heading="Founder's Scholarship", text="a"),
+            Section(number="1", heading="Founder's Scholarship", text="b"),
+            Section(heading="Note", text="c"),
+            Section(heading="Note", text="d"),
+            Section(heading="!!!", text="e"),
+            Section(number="4.2.1", heading="Deeply Numbered", text="f"),
+        ]
+    )
+    rendered = [c.render() for c in doc.citations()]
+    assert len(set(rendered)) == len(rendered)
+    for r in rendered:
+        assert CitationID.is_valid(r), f"{r} is not a valid citation"
 
 
 def test_document_rejects_bad_university_slug(sample_document: Document):

@@ -191,12 +191,29 @@ class Section(BaseModel):
     def section_key(self) -> str:
         """The third part of a citation ID for this section.
 
-        Uses the document's own numbering when it has any, because that is what
-        a reader would quote. Falls back to a slug of the heading otherwise.
+        Combines the document's own numbering with a slug of the heading -
+        "4.2-minimum_attendance" rather than just "4.2".
+
+        Both halves are needed. Real documents reuse their numbering: SRM's
+        scholarship page contains several independent numbered lists, so "2"
+        appears six times in one document meaning six different things. A
+        number alone is therefore not unique, and a citation that points at
+        six different passages cannot be verified at all.
+
+        Including the heading also makes the citation readable on its own -
+        a person can find "2. SRM Merit Scholarship" in the source document
+        without having to count list items.
+
+        This is still not guaranteed unique on its own (that document also
+        has six sections all headed "Consequence" with no number at all), so
+        Document.citations() disambiguates any remaining collisions.
         """
-        if self.number:
-            return self.number
         slug = re.sub(r"[^a-z0-9]+", "_", self.heading.lower()).strip("_")
+        # Cap the slug: some headings are a full sentence, and an
+        # unbounded citation ID is unreadable and awkward to quote.
+        slug = slug[:40].rstrip("_")
+        if self.number:
+            return f"{self.number}-{slug}" if slug else self.number
         return slug or "unnamed"
 
 
@@ -226,13 +243,41 @@ class Document(BaseModel):
             raise ValueError(f"university {v!r} must be a slug like 'uni_a'")
         return v
 
-    def citation_for(self, section: Section) -> CitationID:
-        """Build the citation ID for one section of this document."""
-        return CitationID(
-            university=self.university,
-            policy=self.policy_type.value,
-            section=section.section_key(),
-        )
+    def citations(self) -> list[CitationID]:
+        """A unique CitationID for every section, aligned with self.sections.
+
+        This is the authoritative way to cite sections of this document, and
+        the only one that guarantees uniqueness. Section.section_key() alone
+        cannot: real documents repeat both their numbering and their
+        headings, and SRM's Code of Conduct has six separate sections all
+        headed "Consequence" with no number to tell them apart.
+
+        Duplicates get an occurrence suffix in document order, so the second
+        "Consequence" becomes "consequence-2". Document order is stable
+        because it comes from the source document itself, so citations stay
+        stable across rebuilds as long as the source has not changed - and if
+        it has, the checksum in the manifest will say so.
+
+        Uniqueness matters here more than tidiness: a citation pointing at
+        six different passages makes "does the cited section support this
+        claim?" unanswerable, which is the question the whole project exists
+        to answer.
+        """
+        seen: dict[str, int] = {}
+        out: list[CitationID] = []
+        for section in self.sections:
+            key = section.section_key()
+            count = seen.get(key, 0) + 1
+            seen[key] = count
+            unique_key = key if count == 1 else f"{key}-{count}"
+            out.append(
+                CitationID(
+                    university=self.university,
+                    policy=self.policy_type.value,
+                    section=unique_key,
+                )
+            )
+        return out
 
 
 # ---------------------------------------------------------------------------
