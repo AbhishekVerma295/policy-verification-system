@@ -221,8 +221,8 @@ the same questions would only prove it works on the questions it was tuned for.
 |---|---|---|
 | 0 | Foundations, data contracts, three spikes, corpus locked | ✅ done |
 | 1 | Ingestion — documents to clean `Document` objects | ✅ done |
-| 2 | Chunking and the vector index | next |
-| 3 | Retrieval and structured generation | |
+| 2 | Chunking and the vector index | ✅ done |
+| 3 | Retrieval and structured generation | next |
 | 4 | **The verifier** — NLI, numeric guards, citation checks | |
 | 5 | Abstention and transparent correction | |
 | 6 | Adversarial question set | |
@@ -241,6 +241,16 @@ the same questions would only prove it works on the questions it was tuned for.
 - **147 sections** produced across 6 documents — run it yourself and check `data/processed/*/*.txt`
 - Two extraction bugs were found and fixed by inspecting real output, not assumed away: (1) SRM's HTML pages hide their real body prose alongside a sidebar menu, a mega-menu and a breadcrumb, none of which are wrapped in semantic `<nav>`/`<footer>` tags — fixed with SRM-specific CSS-class strips in `extract.py`; (2) PDF running headers (e.g. "SRM INSTITUTE OF SCIENCE AND TECHNOLOGY" repeating once per page) and enumerated list items (e.g. "1. All examinations undertaken shall be cancelled…") were both being mistaken for section headings — fixed with a repeated-line filter and a title-case-majority check in `normalize.py`
 - **Known remaining limitations**, left as documented rather than chased further: a handful of address/table-of-contents fragments still occasionally get picked up as spurious tiny sections; documents that mix Roman-numeral sub-headings ("II. ADMISSION TO EXAMINATIONS") with the two detected styles have those sub-headings folded into their parent section rather than split out separately. Neither loses content or produces a wrong citation — just a coarser grain in a few spots.
+
+**Phase 2 results** (`python scripts/build_index.py`, 2026-08-19): **258 chunks** across 192 sections, embedded with bge-base on CPU.
+
+Three problems were found by running against the real corpus and fixed:
+
+- **Colliding citations.** SRM's scholarship page contains several *independent* numbered lists, so "2" appears six times meaning six different things; the Code of Conduct has six separate sections all headed "Consequence". Different passages were claiming the same citation ID, which would make "does the cited section support this claim?" unanswerable. Citations now combine number *and* heading slug (`2-srm_merit_scholarship`), with an occurrence suffix for any remaining collision.
+- **A 39,000-character blob.** PDF extraction had buried 52 real section headings *mid-line* (a stray table cell landing in front of the heading, with body text following on the same line), so the entire Academic Regulations document collapsed into 7 sections — and the flagship 75% attendance rule sat under the meaningless heading `yy_dd_c_l_ss_a`. A normalising pass now lifts those headings onto their own line, and that rule cites correctly as `srm/attendance/7.3-minimum_attendance`.
+- **An over-aggressive noise filter** was dropping genuinely short rules. The two errors are not symmetric — surviving noise merely scores badly, but dropped content is permanently unretrievable — so the threshold now errs toward keeping.
+
+**Known limitation, deliberately left for Phase 3:** results are not diversified per citation, so one oversized section can occupy several of the top-k slots. Measured effect — the 75% rule ranks 1st for "minimum attendance percentage required" and 2nd for "what percentage of classes must I attend?", but 4th for "what is the minimum attendance requirement to sit the final examination?", where three slots go to chunks of a single examination section.
 
 ---
 
