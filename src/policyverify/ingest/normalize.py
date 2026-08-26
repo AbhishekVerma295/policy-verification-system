@@ -47,7 +47,56 @@ _NUMBERED_RE = re.compile(r"^(\d+(?:\.\d+)*|[A-Z]\.\d+)[.):]?\s+(\S.*)$")
 # for section headers within a single block of body text (see extract.py).
 _CAPS_RE = re.compile(r"^[A-Z][A-Z0-9 /&,\-()]{3,90}:?$")
 
+# A numbered, Title Case heading ending in a colon, appearing anywhere in a
+# line rather than at the start of one:
+#
+#     R 7.3 Minimum Attendance:  A student must maintain ...
+#       ^^^^^^^^^^^^^^^^^^^^^^^  heading            ^^^^  body, same line
+#
+# PDF text extraction produces this constantly. Page furniture (here a stray
+# table-cell "R") lands in front of the heading, and the body text that
+# follows the heading stays on the same line, so neither of the patterns
+# above sees it.
+#
+# This is not a rare edge case: matching it recovers 52 real section headings
+# from SRM's Academic Regulations PDF alone. Without it that entire 57,000
+# character document collapses into 7 sections, one of which is a 39,000
+# character blob containing the 75% minimum-attendance rule under the
+# meaningless heading "Yy Dd C L Ss A" - a citation no human could check.
+#
+# The pattern is deliberately strict to avoid false positives: it requires a
+# dotted number (so "1 Hour of learning ..." does not match), a capitalised
+# start, and a trailing colon.
+_INLINE_HEADING_RE = re.compile(r"(?:^|\s)(\d+(?:\.\d+)+)\s+([A-Z][A-Za-z][^:\n]{2,58}):")
+
 _MAX_HEADING_LEN = 100
+
+
+def promote_inline_headings(text: str) -> str:
+    """Put mid-line numbered headings onto their own line.
+
+    A normalising pass, not a parsing one: it only moves line breaks so the
+    heading detectors below can see headings that PDF extraction buried
+    inside a line. No characters are added or removed, so no content can be
+    lost by running it.
+    """
+    out = []
+    for line in text.splitlines():
+        match = _INLINE_HEADING_RE.search(line)
+        # Only act when the heading is genuinely mid-line. A heading already
+        # at the start of its line is fine as it is.
+        if match and match.start(1) > 0:
+            number, title = match.group(1), match.group(2).strip()
+            before = line[: match.start(1)].strip()
+            after = line[match.end() :].strip()
+            if before:
+                out.append(before)
+            out.append(f"{number} {title}:")
+            if after:
+                out.append(after)
+        else:
+            out.append(line)
+    return "\n".join(out)
 
 
 def _is_titlecase_majority(text: str, min_ratio: float = 0.5) -> bool:
@@ -96,7 +145,9 @@ def _is_caps_heading(line: str) -> bool:
 
 def split_into_sections(text: str, title: str) -> list[Section]:
     """Split cleaned document text into sections at detected heading lines."""
-    lines = text.splitlines()
+    # Rescue headings that PDF extraction buried mid-line before looking for
+    # them - see promote_inline_headings().
+    lines = promote_inline_headings(text).splitlines()
 
     # (line index, section number if numbered, heading text)
     headings: list[tuple[int, str | None, str]] = []

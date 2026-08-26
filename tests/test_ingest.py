@@ -12,7 +12,11 @@ each fix exists).
 from __future__ import annotations
 
 from policyverify.ingest.extract import _strip_repeated_lines, extract_html
-from policyverify.ingest.normalize import build_document, split_into_sections
+from policyverify.ingest.normalize import (
+    build_document,
+    promote_inline_headings,
+    split_into_sections,
+)
 from policyverify.schema import PolicyType, SourceFormat
 
 # ---------------------------------------------------------------------------
@@ -135,6 +139,55 @@ def test_strip_repeated_lines_ignores_long_lines():
 # ---------------------------------------------------------------------------
 # split_into_sections
 # ---------------------------------------------------------------------------
+
+
+def test_promote_inline_headings_rescues_pdf_buried_headings():
+    """The exact line from SRM's Academic Regulations PDF that motivated this:
+    a stray table-cell "R" landed in front of the heading, and the body text
+    stayed on the same line, so the heading was invisible to both detectors."""
+    line = (
+        "R 7.3 Minimum Attendance:  A student must strive to attend all the "
+        "classes without fail."
+    )
+    out = promote_inline_headings(line).splitlines()
+    assert "7.3 Minimum Attendance:" in out
+    # nothing is discarded - the stray prefix and the body both survive
+    assert out[0] == "R"
+    assert out[-1].startswith("A student must strive")
+
+
+def test_promote_inline_headings_leaves_line_start_headings_alone():
+    text = "7.1 For all I Year Students:\nBody text here."
+    assert promote_inline_headings(text) == text
+
+
+def test_promote_inline_headings_ignores_undotted_numbers():
+    """Strictness guard: "1 Hour of learning..." is a list item, not a
+    heading. Requiring a dotted number keeps it from matching."""
+    line = "1 Hour of learning from a Lecture Session per week (L)"
+    assert promote_inline_headings(line) == line
+
+
+def test_promote_inline_headings_loses_no_characters():
+    """It only moves line breaks, so no content can go missing."""
+    text = "prefix 2.4 Some Heading: and then the body continues here"
+    before = "".join(text.split())
+    after = "".join(promote_inline_headings(text).split())
+    assert before == after
+
+
+def test_inline_heading_promotion_produces_citable_sections():
+    """End to end: the buried heading becomes a real, checkable citation
+    instead of vanishing into a blob."""
+    text = (
+        "R 7.3 Minimum Attendance:  A student must maintain at least 75% attendance.\n"
+        "R 7.4 Attendance Shortage:  The teacher shall prepare particulars.\n"
+    )
+    sections = split_into_sections(text, title="Academic Regulations")
+    numbers = [s.number for s in sections]
+    assert "7.3" in numbers
+    minimum = next(s for s in sections if s.number == "7.3")
+    assert minimum.section_key() == "7.3-minimum_attendance"
 
 
 def test_split_detects_numbered_headings():
