@@ -78,6 +78,19 @@ class RetrievalConfig(BaseModel):
     # schools' policies, which is the single most likely wrong answer here.
     enable_university_filter: bool = True
 
+    # At most this many chunks from any one section may appear in the results.
+    #
+    # Without a cap, a single oversized section crowds everything else out: it
+    # was split into many chunks, they all score similarly, and they take every
+    # slot. Measured on the real corpus - asking "what is the minimum
+    # attendance requirement to sit the final examination?" filled the whole
+    # top 3 with chunks of one examination section and pushed the actual
+    # attendance rule down to rank 4.
+    max_chunks_per_citation: int = 2
+    # How many extra candidates to pull before applying that cap, as a
+    # multiple of top_k. Needs to be > 1 or capping would just leave gaps.
+    oversample_factor: int = 4
+
 
 class LLMConfig(BaseModel):
     """Which language model writes the draft answer.
@@ -97,6 +110,20 @@ class LLMConfig(BaseModel):
     # Hard ceiling so one bad question cannot hang the whole app.
     timeout_seconds: int = 120
     num_ctx: int = 8192
+
+    # Qwen3 is a hybrid reasoning model: it can emit "thinking" tokens before
+    # its answer, and Ollama returns those in a SEPARATE field. Combined with
+    # JSON mode the whole reply lands in `thinking` and `response` comes back
+    # empty - the model looks broken while actually working fine.
+    #
+    # Turning thinking off is what makes structured output usable here. It is
+    # a setting rather than a hardcoded value because a non-Qwen backend will
+    # not need it. Measured: 3/3 valid JSON with this off, 0/3 with it on.
+    disable_thinking: bool = True
+    # How many times to re-ask when the model returns unparseable output.
+    # One retry, then fail loudly - silently accepting malformed output is
+    # exactly the kind of quiet wrongness this project exists to prevent.
+    max_parse_retries: int = 1
 
 
 class NLIConfig(BaseModel):
