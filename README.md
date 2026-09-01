@@ -222,9 +222,9 @@ the same questions would only prove it works on the questions it was tuned for.
 | 0 | Foundations, data contracts, three spikes, corpus locked | ✅ done |
 | 1 | Ingestion — documents to clean `Document` objects | ✅ done |
 | 2 | Chunking and the vector index | ✅ done |
-| 3 | Retrieval and structured generation | next |
-| 4 | **The verifier** — NLI, numeric guards, citation checks | |
-| 5 | Abstention and transparent correction | |
+| 3 | Retrieval and structured generation | ✅ done |
+| 4 | **The verifier** — NLI, numeric guards, citation checks | ✅ done |
+| 5 | Abstention and transparent correction | next |
 | 6 | Adversarial question set | |
 | 7 | Streamlit interface | |
 | 8 | Evaluation harness | |
@@ -250,7 +250,31 @@ Three problems were found by running against the real corpus and fixed:
 - **A 39,000-character blob.** PDF extraction had buried 52 real section headings *mid-line* (a stray table cell landing in front of the heading, with body text following on the same line), so the entire Academic Regulations document collapsed into 7 sections — and the flagship 75% attendance rule sat under the meaningless heading `yy_dd_c_l_ss_a`. A normalising pass now lifts those headings onto their own line, and that rule cites correctly as `srm/attendance/7.3-minimum_attendance`.
 - **An over-aggressive noise filter** was dropping genuinely short rules. The two errors are not symmetric — surviving noise merely scores badly, but dropped content is permanently unretrievable — so the threshold now errs toward keeping.
 
-**Known limitation, deliberately left for Phase 3:** results are not diversified per citation, so one oversized section can occupy several of the top-k slots. Measured effect — the 75% rule ranks 1st for "minimum attendance percentage required" and 2nd for "what percentage of classes must I attend?", but 4th for "what is the minimum attendance requirement to sit the final examination?", where three slots go to chunks of a single examination section.
+**Known limitation, fixed in Phase 3:** results were not diversified per citation, so one oversized section could occupy several top-k slots. Retrieval now caps chunks per section.
+
+**Phase 3 results** — question in, cited claims out. Two findings worth recording:
+
+- **Qwen3 needs thinking mode off.** It is a hybrid reasoning model, and Ollama returns its thinking tokens in a *separate* field. With JSON mode the entire reply lands there and `response` comes back empty — the model looks broken while working perfectly. Controlled by `llm.disable_thinking`. Measured: 3/3 valid JSON off, 0/3 on.
+- **Long citation IDs transcribe reliably.** A spike checked whether a 4B model could copy `srm/academic_integrity/9-verbatim_plagiarism_copy_and_paste_intel` exactly, since a garbled ID is indistinguishable from a fabricated one. It could — 8/8. No numbered-reference indirection layer was needed.
+
+**Phase 4 results** — the verifier, and the part that makes this project worth building.
+
+The Phase 0 NLI spike only tested 20 hand-written pairs, so the open question was whether it held up on *real* retrieved passages: long, multi-rule, full of PDF extraction noise. **It scored 7/7**, decisively. End-to-end against the live corpus:
+
+| Claim | Verdict |
+|---|---|
+| "must maintain at least **75%** attendance" | SUPPORTED 1.00 |
+| "must maintain at least **80%** attendance" | **REFUTED 1.00** |
+| "students who miss classes must pay a fine of 500 rupees" | NEUTRAL 0.00 |
+| claim citing `srm/attendance/99-does-not-exist` | NEUTRAL — flagged **fabricated** |
+
+Design decisions in the combiner:
+
+- **The numeric guard can veto support but never grant it.** Matching digits is not proof a passage *means* what the claim says, so only NLI grants support — and only the numeric check can overrule it on numbers.
+- **Support requires every check to agree.** Wrongly marking a claim supported puts a false statement in front of a student with a citation attached; wrongly withholding a true one is visible and recoverable. The asymmetry is deliberate.
+- **Long passages are windowed, not truncated.** The NLI model has a 512-token limit and chunks run to ~1,950 characters. Letting the tokenizer truncate could silently discard the very sentence that supports the claim.
+
+**Known limitation:** verification is the slowest stage — ~15s for 3 claims on CPU, against ~9s generation and ~1s warm retrieval. It scales with claims × cited passages × windows.
 
 ---
 

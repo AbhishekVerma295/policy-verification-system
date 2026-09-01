@@ -17,15 +17,18 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from policyverify.config import get_config  # noqa: E402
 from policyverify.generate import GenerationError, generate_answer_draft  # noqa: E402
-from policyverify.indexing import IndexMismatchError  # noqa: E402
+from policyverify.indexing import IndexMismatchError, VectorStore  # noqa: E402
 from policyverify.llm import LLMError  # noqa: E402
 from policyverify.retrieve import retrieve  # noqa: E402
+from policyverify.schema import VerdictStatus  # noqa: E402
+from policyverify.verify import verify_claims  # noqa: E402
 
 
 def main() -> int:
@@ -75,24 +78,52 @@ def main() -> int:
         print(f"\nGeneration failed: {exc}\n")
         return 1
 
-    print(f"\n--- {len(draft.claims)} claims generated in {generate_ms:.0f}ms ---\n")
-    for i, claim in enumerate(draft.claims, 1):
-        print(f"  CLAIM {i}")
-        print(f"    {claim.text}")
-        for citation in claim.citation_ids:
-            print(f"      -> {citation}")
-        if not claim.citation_ids:
-            print("      -> (no citation given)")
-        print()
+    print(f"\n{len(draft.claims)} claims generated in {generate_ms:.0f}ms")
+
+    if not draft.claims:
+        print("\nThe model produced no claims - the passages do not answer this.\n")
+        return 0
+
+    t0 = time.time()
+    verdicts = verify_claims(draft.claims, chunks, store=VectorStore(config), config=config)
+    verify_ms = (time.time() - t0) * 1000
+
+    print(f"verified in {verify_ms:.0f}ms\n")
+    print("-" * 72)
+
+    symbols = {
+        VerdictStatus.SUPPORTED: "SUPPORTED",
+        VerdictStatus.REFUTED: "REFUTED  ",
+        VerdictStatus.NEUTRAL: "UNSURE   ",
+    }
+    for i, verdict in enumerate(verdicts, 1):
+        print(f"\nCLAIM {i}  [{symbols[verdict.status]}  {verdict.score:.2f}]")
+        print(f"  {verdict.claim.text}")
+        for citation in verdict.claim.citation_ids:
+            print(f"    -> {citation}")
+        print(f"  {verdict.explanation}")
+        if verdict.checks.numeric_detail and not verdict.checks.numeric_ok:
+            print(f"  numbers: {verdict.checks.numeric_detail}")
+
+    print("\n" + "-" * 72)
+    counts = Counter(v.status for v in verdicts)
+    print(
+        f"  {counts[VerdictStatus.SUPPORTED]} supported, "
+        f"{counts[VerdictStatus.REFUTED]} refuted, "
+        f"{counts[VerdictStatus.NEUTRAL]} unsure"
+    )
+    print(
+        f"  timings: retrieve {retrieve_ms:.0f}ms | generate {generate_ms:.0f}ms "
+        f"| verify {verify_ms:.0f}ms"
+    )
 
     if fabricated:
-        print("  FABRICATED CITATIONS (cited but not among the retrieved passages):")
+        print("\n  FABRICATED CITATIONS (not among the retrieved passages):")
         for citation in fabricated:
             print(f"    !! {citation}")
-        print()
 
-    print("NOTE: these claims are NOT yet verified - that is Phase 4.")
-    print("Nothing above has been checked against the passages it cites.\n")
+    print("\nNOTE: unsupported claims are still shown - dropping them and")
+    print("showing what was removed is Phase 5.\n")
     return 0
 
 
