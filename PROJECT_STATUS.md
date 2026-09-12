@@ -1,263 +1,412 @@
-# Policy Verification System — Project Status
+# Project Status
 
-Context document for sharing with another AI assistant. States what exists,
-not why or how to build it next.
+Detailed current state of the Policy Verification System. Written as a handoff
+document: it states what exists, what was measured, and what is not built yet.
 
-Last updated: after Phase 3 (retrieval + structured claim generation).
+**Last updated:** after Phase 4 (the verifier), 2026-09-13.
 
-## What this project is
+For the project overview see [`README.md`](README.md). For the ideas behind
+it see [`CONCEPTS.md`](CONCEPTS.md).
 
-A local Q&A system that answers questions about SRM Institute of Science and
-Technology (Kattankulathur) policies, breaks each answer into individual
-factual claims, verifies each claim against the retrieved policy text, shows
-the citation for each claim, and abstains when it cannot find support.
+---
 
-## Progress
+## 1. Summary
 
-| Phase | Scope | Status |
-|---|---|---|
-| 0 | Foundations, data contracts, spikes, corpus | done |
-| 1 | Ingestion — documents to `Document` objects | done |
-| 2 | Chunking and the vector index | done |
-| 3 | Retrieval and structured claim generation | done |
-| 4 | The verifier (NLI, numeric guards, citation checks) | next |
-| 5 | Abstention and transparent correction | not started |
-| 6 | Adversarial question set | not started |
-| 7 | Streamlit UI | not started |
-| 8 | Evaluation harness | not started |
-| 9 | Hardening, error analysis, demo | not started |
+A local question-answering system over SRM Institute of Science and Technology
+(Kattankulathur) policies. It breaks each answer into individual factual
+claims, verifies every claim against the policy text it cites, reports a
+verdict and confidence per claim, and will abstain when evidence is
+insufficient.
 
-Current state: you can ask a question from the command line and get back
-separate factual claims, each citing real policy sections. Nothing is
-verified yet — that is Phase 4.
+| | |
+|---|---|
+| **Phases complete** | 0, 1, 2, 3, 4 |
+| **Next** | Phase 5 — abstention and transparent correction |
+| **Tests** | 137 passing, no GPU / model / network required |
+| **Lint** | ruff clean |
+| **Corpus** | 6 documents, 192 sections, 258 indexed chunks |
+| **Working end-to-end** | question → retrieval → claims → per-claim verdicts |
+| **Not yet working** | abstention, UI, evaluation harness |
 
-## Tech stack
+---
 
-- Python 3.12, virtual environment at `.venv/`
-- Pydantic 2 for data validation
-- Qwen3 4B via Ollama, run locally (8B is a later upgrade)
-- `BAAI/bge-base-en-v1.5` embedding model, runs on CPU
-- Chroma vector database, persisted to `data/index/`
-- `MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli` as the NLI fact-checking
-  model (chosen, configured, not yet wired in — Phase 4)
-- Streamlit for the UI (not yet built — Phase 7)
-- pytest for testing, ruff for linting
-- Git repo at `github.com/AbhishekVerma295/policy-verification-system`
+## 2. Environment
 
-## Hardware
+| | |
+|---|---|
+| OS | Windows 11 |
+| Python | 3.12 in `.venv/` (3.13+ not supported — PyTorch lags) |
+| GPU | RTX 4060 Laptop, 8 GB VRAM |
+| RAM | 16 GB |
+| Generation model | `qwen3:4b` via Ollama (local, GPU) |
+| Embedding model | `BAAI/bge-base-en-v1.5`, 768-dim (CPU) |
+| NLI model | `MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli` (CPU) |
+| Vector store | Chroma, persisted to `data/index/` |
+| Repo | `github.com/AbhishekVerma295/policy-verification-system` |
 
-- Windows 11, RTX 4060 Laptop GPU (8 GB VRAM), 16 GB RAM
-- Qwen3 4B + embedding model + NLI model together peak at 3.9 GB VRAM (measured)
+Measured VRAM with all three models loaded simultaneously: **3.9 GB of 8 GB**.
+The embedding and NLI models are pinned to CPU on purpose so the whole GPU
+stays available for Qwen.
 
-## Corpus
+`torch` is installed as the **CPU-only** build (~200 MB rather than ~2.5 GB).
+Qwen runs through Ollama, which has its own runtime, so torch never needs CUDA.
 
-One institution: SRM Institute of Science and Technology, Kattankulathur.
-6 documents, one per policy type:
+---
 
-| Policy type | Source | Format |
-|---|---|---|
-| attendance | Academic Regulations 2021 (UG/Integrated PG) | PDF |
-| examination | Examination Policy | HTML |
-| academic_integrity | Plagiarism Policy (2017) | PDF |
-| scholarship | Scholarship Policy | HTML |
-| residence | SRMIST Hostels Rules and Regulations (Jan 2025) | PDF |
-| code_of_conduct | Code of Conduct for Students | HTML |
+## 3. Corpus
 
-Source URLs and checksums are in `data/manifest.yaml`. The documents
-themselves are not committed, only the manifest — they are re-downloaded by
-running the ingestion script.
+One institution, six documents, one per policy type.
 
-Current numbers: **192 sections** extracted, **258 chunks** indexed.
+| Policy type | Source document | Format | Sections | Chunks |
+|---|---|---|---|---|
+| `attendance` | Academic Regulations 2021 (UG / Integrated PG) | PDF | 52 | 67 |
+| `examination` | Examination Policy | HTML | 26 | 71 |
+| `academic_integrity` | Plagiarism Policy (2017) | PDF | 9 | 11 |
+| `scholarship` | Scholarship Policy | HTML | 41 | 49 |
+| `residence` | SRMIST Hostels Rules and Regulations (Jan 2025) | PDF | 50 | 40 |
+| `code_of_conduct` | Code of Conduct for Students | HTML | 14 | 20 |
+| | | | **192** | **258** |
 
-## Project structure
+Source URLs, access dates, checksums and the reasoning behind each pick are in
+[`data/manifest.yaml`](data/manifest.yaml). The documents themselves are **not
+committed** — only the manifest. `python scripts/ingest.py` re-downloads them.
 
-```
-policy-verification-system/
-├── README.md                     full project documentation
-├── PROJECT_STATUS.md             this file
-├── requirements.txt
-├── config.yaml                   all settings
-├── pyproject.toml                pytest + ruff config
-├── data/
-│   ├── manifest.yaml             corpus source list (committed)
-│   ├── raw/                      downloaded files (gitignored)
-│   ├── processed/                Document JSON + text (gitignored)
-│   └── index/                    Chroma database + index_manifest.json
-├── src/policyverify/
-│   ├── schema.py                 data models and the citation contract
-│   ├── config.py                 settings loader
-│   ├── llm.py                    the only place a model is called
-│   ├── retrieve.py               search + per-section diversity cap
-│   ├── generate.py               prompt building, JSON claim parsing
-│   ├── ingest/
-│   │   ├── fetch.py              downloads documents from manifest.yaml
-│   │   ├── extract.py            PDF/HTML → plain text
-│   │   └── normalize.py          plain text → Document with sections
-│   ├── indexing/
-│   │   ├── chunk.py              Document → Chunks
-│   │   └── store.py              Chroma wrapper + index manifest guard
-│   ├── verify/                   empty, Phase 4
-│   ├── abstain.py                not yet created, Phase 5
-│   └── pipeline.py               not yet created, Phase 5
-├── app/                          empty, Phase 7 (Streamlit)
-├── scripts/
-│   ├── ingest.py                 runs the Phase 1 pipeline
-│   ├── build_index.py            runs the Phase 2 pipeline
-│   └── ask.py                    ask a question from the CLI
-├── spikes/
-│   ├── spike_corpus.py           tests extraction quality of a URL
-│   ├── spike_nli.py              compares NLI model candidates
-│   └── spike_vram.py             measures GPU memory usage
-├── eval/                         empty, Phase 6/8
-└── tests/                        107 tests, no GPU or network needed
-    ├── conftest.py               shared fixtures, including FakeLLM
-    ├── test_schema.py            40 tests
-    ├── test_ingest.py            21 tests
-    ├── test_indexing.py          19 tests
-    ├── test_generate.py          20 tests
-    └── test_retrieve.py          7 tests
-```
+**Scope note:** this began as a 3–4 institution plan. Narrowing to one
+institution was a deliberate decision. The cost was losing "cross-university
+confusion" as the signature adversarial trap; the replacement is
+cross-*regulation* confusion, since SRM publishes several dated,
+programme-specific regulation documents with genuinely different rules.
 
-## What is built and working
+---
 
-### Data contracts (`src/policyverify/schema.py`)
+## 4. What is built
 
-- `CitationID` — format `{university}/{policy}/{section}`, where section
-  combines the document's own number with a heading slug, e.g.
-  `srm/attendance/7.3-minimum_attendance`. Strictly validated and frozen.
-- `Document.citations()` — assigns a unique citation to every section,
-  adding an occurrence suffix (`consequence-2`) where a document repeats a
-  heading or restarts its numbering.
-- `Document`, `Section` — what ingestion produces
-- `Chunk`, `RetrievedChunk` — what indexing and retrieval produce
-- `Claim`, `DraftAnswer` — the structural contract the LLM must output
-- `ClaimVerdict`, `CheckResults` — verification output (Phase 4, unused)
-- `Answer`, `Timings` — the final response object (Phase 5, unused)
+### 4.1 Data contracts — `schema.py`
 
-### Configuration (`config.yaml` + `src/policyverify/config.py`)
+The foundation; everything imports from here. Pure Pydantic models, no I/O.
 
-One validated YAML file for embedding model, chunking sizes, retrieval
-top-k and diversity cap, LLM model/backend/temperature/thinking, NLI model,
-and abstention thresholds. `Config.fingerprint()` summarises the settings
-that affect results, for recording alongside runs.
+| Model | Purpose |
+|---|---|
+| `CitationID` | `{university}/{policy}/{section}`, frozen, strictly validated |
+| `Section`, `Document` | What ingestion produces |
+| `Chunk`, `RetrievedChunk` | What indexing and retrieval produce |
+| `Claim`, `DraftAnswer` | The structural contract the LLM must satisfy |
+| `CheckResults`, `ClaimVerdict` | Verification output |
+| `Answer`, `Timings` | The final response object — **defined, not yet populated** |
+| `PolicyType`, `SourceFormat`, `VerdictStatus` | `StrEnum`s, so they serialise as plain strings |
 
-### Ingestion (`src/policyverify/ingest/`, run by `scripts/ingest.py`)
+`Document.citations()` is the authoritative way to cite sections. It assigns a
+unique citation per section, because `Section.section_key()` alone cannot
+guarantee uniqueness — it only ever sees one section at a time.
 
-1. **fetch.py** — downloads each document from the manifest, saves raw bytes
-   to `data/raw/`, records SHA-256 checksums in `data/raw/checksums.json` so
-   a later re-fetch detects if the university changed the document
-2. **extract.py** — raw bytes to plain text
-   - HTML: BeautifulSoup; strips `<script>`/`<style>`/`<nav>`/`<footer>`
-     plus SRM-specific chrome (sidebar policy menu, mega-menu, breadcrumb)
-     that is not in semantic tags
-   - PDF: PyMuPDF; strips lines repeating 3+ times verbatim (running
-     page headers and footers)
-3. **normalize.py** — splits text into `Section` objects. Detects three
+### 4.2 Configuration — `config.py` + `config.yaml`
+
+One validated file for every tunable: paths, embedding model and device,
+chunking sizes, retrieval top-k and diversity cap, LLM model/temperature/
+thinking, NLI model and threshold, verification flags, abstention thresholds.
+
+Every setting has a Pydantic default, so the system runs with no `config.yaml`
+at all — the file only overrides what it mentions.
+`Config.fingerprint()` summarises the settings that affect results, for
+recording alongside runs.
+
+### 4.3 Ingestion — `ingest/` (run by `scripts/ingest.py`)
+
+1. **`fetch.py`** — downloads each document listed in the manifest, saves raw
+   bytes to `data/raw/`, records SHA-256 checksums in `data/raw/checksums.json`
+   so a later re-fetch detects if the university silently changed a document.
+   Checksums live in a separate generated file rather than being written back
+   into `manifest.yaml`, because round-tripping that hand-commented file
+   through a YAML library would strip every comment.
+2. **`extract.py`** — raw bytes to plain text.
+   - HTML: BeautifulSoup; strips `<script>`/`<style>`/`<nav>`/`<footer>` plus
+     SRM-specific chrome (sidebar policy menu, mega-menu, breadcrumb) that is
+     **not** in semantic tags and was found by inspecting the real DOM.
+   - PDF: PyMuPDF; strips lines repeating 3+ times verbatim, which removes
+     running page headers and footers.
+3. **`normalize.py`** — splits text into `Section` objects by detecting three
    heading styles: numbered (`4.2 Minimum Attendance`), ALL-CAPS
-   (`REGISTRATION AND ENROLLMENT:`), and numbered headings buried mid-line
-   by PDF extraction (`R 7.3 Minimum Attendance:  A student must...`), which
-   are lifted onto their own line first.
+   (`REGISTRATION AND ENROLLMENT:`), and numbered headings buried mid-line by
+   PDF extraction, which are lifted onto their own line first.
 
-### Indexing (`src/policyverify/indexing/`, run by `scripts/build_index.py`)
+### 4.4 Indexing — `indexing/` (run by `scripts/build_index.py`)
 
-- **chunk.py** — splits Documents into Chunks on section boundaries. A chunk
-  never spans two sections. Oversized sections are split into overlapping
-  windows that all keep the same citation ID and differ only in `chunk_id`.
-  Contents-page noise (entries whose whole body is a page number) is dropped.
-- **store.py** — Chroma wrapper. Writes `data/index/index_manifest.json`
-  recording which embedding model built the index, and refuses to search if
-  the configured model no longer matches, because that mismatch otherwise
-  fails silently and returns near-random passages.
-  What gets embedded includes the university, policy type and section
-  heading; what gets stored as chunk text does not, so verification later
-  checks claims against the university's words alone.
+- **`chunk.py`** — Documents to Chunks on section boundaries. A chunk never
+  spans two sections. Oversized sections split into overlapping windows that
+  all keep the same citation and differ only in `chunk_id`. Contents-page
+  noise (entries whose whole body is a page number) is dropped.
+- **`store.py`** — Chroma wrapper. Writes `data/index/index_manifest.json`
+  recording which embedding model built the index, and **refuses to search**
+  if the configured model no longer matches.
 
-### Retrieval and generation (Phase 3)
+  What gets **embedded** includes university, policy type and section heading;
+  what gets **stored as chunk text** does not. Search benefits from the
+  context; verification must check claims against the university's words
+  alone, not a string we assembled.
 
-- **retrieve.py** — dense search with optional university and policy-type
-  filters, plus a cap on how many chunks any single section may contribute
-  (`max_chunks_per_citation`, default 2). Over-fetches then caps.
-- **llm.py** — the single place a model is called. `generate(prompt) -> str`,
-  with an Ollama backend. Adding a hosted backend later means one branch here.
-- **generate.py** — builds the prompt, requires JSON claims validated against
-  `DraftAnswer`, retries once on unparseable output then raises. Separates
-  citations that match no retrieved passage and reports them as fabricated
-  rather than discarding them.
-- **scripts/ask.py** — CLI entry point.
+### 4.5 Retrieval and generation — Phase 3
 
-## Verified behaviour
+- **`retrieve.py`** — dense search with optional university/policy filters,
+  plus `diversify()`, which caps how many chunks any single section may
+  contribute (default 2).
+- **`llm.py`** — the single place a language model is called.
+  `generate(prompt) -> str`, `LLMBackend` protocol, `OllamaBackend`
+  implementation. Adding a hosted backend later is one branch in `get_llm()`.
+- **`generate.py`** — builds the prompt, requires JSON claims validated
+  against `DraftAnswer`, retries once on unparseable output then raises.
+  `drop_unknown_citations()` separates citations matching no retrieved
+  passage and **reports** them as fabricated rather than discarding them.
 
-Real run (`python scripts/ask.py "What is the minimum attendance requirement
-to sit the final examination?"`):
+  The prompt states explicitly that passages are reference material and any
+  instructions inside them must be ignored — a prompt-injection defence,
+  since the system reads documents it did not write.
+
+### 4.6 The verifier — `verify/` (Phase 4)
+
+Three independent checks per claim, combined by `verifier.py`.
+
+- **`nli.py`** — `NLIChecker.check(premise, hypothesis)` returns
+  entailment / neutral / contradiction with probabilities. Long passages are
+  split into overlapping windows via `split_windows()` and each is scored;
+  support anywhere in the passage counts as support.
+- **`numeric.py`** — `check_numbers(claim, premises)` extracts numeric values
+  (handling `75%`, `75 %`, `1,200`, `3.0`) and reports any number in the claim
+  absent from the evidence. Ignores small bare values (0, 1, 2) that are list
+  markers rather than asserted facts.
+- **`citation.py`** — `check_citation()` distinguishes **fabricated** (exists
+  nowhere in the corpus) from **misused** (real section, wrong attribution)
+  from **not retrieved** (real but never shown to the model). A store failure
+  is explicitly *not* reported as fabrication — that would blame the model for
+  our own outage.
+- **`verifier.py`** — combines them into one `ClaimVerdict`.
+
+**Combination rules:**
+
+- Support requires *every* check to agree; any single objection withholds it.
+- The numeric guard can **veto** support but never **grant** it.
+- A claim with no citation, or only fabricated citations, cannot be supported.
+- A fabricated citation alongside a valid one does not block the valid one;
+  it is noted in the explanation.
+
+### 4.7 Scripts
+
+| Script | Does |
+|---|---|
+| `scripts/ingest.py` | manifest → downloaded → extracted → `Document` JSON |
+| `scripts/build_index.py` | processed documents → chunks → embedded index, then a smoke search |
+| `scripts/ask.py` | question → retrieval → claims → verdicts, printed per claim |
+
+### 4.8 Tests — 137 total
+
+| File | Tests | Covers |
+|---|---|---|
+| `test_schema.py` | 40 | Citation format, uniqueness, validation, serialisation |
+| `test_verify.py` | 30 | Numeric guard, citation resolution, verdict combination |
+| `test_ingest.py` | 21 | HTML/PDF extraction, heading detection, section splitting |
+| `test_generate.py` | 20 | Prompt building, JSON parsing, retries, fabrication reporting |
+| `test_indexing.py` | 19 | Chunk boundaries, noise filtering, index mismatch guard |
+| `test_retrieve.py` | 7 | Diversity cap behaviour |
+
+Runs in ~0.3s with no GPU, model or network. `conftest.py` provides `FakeLLM`;
+`test_verify.py` provides a stub NLI checker. Model quality is measured by the
+evaluation harness (Phase 8), not asserted here — these test plumbing and
+decision logic.
+
+---
+
+## 5. Verified behaviour
+
+### End-to-end, real corpus
+
+`python scripts/ask.py "What is the minimum attendance requirement to sit the final examination?"`
 
 ```
-CLAIM 1  "A student must maintain a minimum attendance record of at least 75%
-          in individual courses..."          -> srm/attendance/7.3-minimum_attendance
-CLAIM 2  "Without the minimum attendance of 75%, students become ineligible
-          to appear for the end semester examination."
-                                             -> srm/attendance/7.3-minimum_attendance
-CLAIM 3  "Students with less than 75% attendance ... awarded 'I' Grade."
-                                             -> srm/attendance/7.4-attendance_shortage_and_examination
+retrieved 6 passages
+  [0.632] srm/examination/detention_cancellation_of_candidature_fo
+  [0.628] srm/examination/detention_cancellation_of_candidature_fo
+  [0.619] srm/attendance/7.3-minimum_attendance
+  ...
+
+CLAIM 1  [SUPPORTED 0.99]  "A student must maintain a minimum attendance
+         record of at least 75% in individual courses..."
+         -> srm/attendance/7.3-minimum_attendance
+
+CLAIM 2  [SUPPORTED 0.98]  "Without the minimum attendance of 75%, students
+         become ineligible to appear for the end semester examination."
+         -> srm/attendance/7.3-minimum_attendance
+
+CLAIM 3  [SUPPORTED 0.55]  "Students with less than 75% attendance ... awarded
+         'I' Grade..."
+         -> srm/attendance/7.4-attendance_shortage_and_examination
 ```
 
-Retrieval ~1s warm (~14s on first call, while the embedding model loads),
-generation ~8s.
+### Adversarial checks with the real models
 
-## Key findings from spikes and real runs
+| Claim | Verdict | Correct |
+|---|---|---|
+| "must maintain at least **75%** attendance" | SUPPORTED 1.00 | ✓ |
+| "must maintain at least **80%** attendance" | **REFUTED 1.00** | ✓ |
+| "students who miss classes must pay a fine of 500 rupees" | NEUTRAL 0.00 | ✓ |
+| claim citing `srm/attendance/99-does-not-exist` | NEUTRAL, **fabricated** | ✓ |
 
-- **Qwen3 needs thinking disabled.** Qwen3 is a hybrid reasoning model and
-  Ollama returns its thinking tokens in a separate `thinking` field. With
-  `format="json"` the entire reply lands there and `response` comes back
-  empty — the model appears broken while working correctly. Controlled by
-  `llm.disable_thinking` in config.yaml. Measured: 3/3 valid JSON with it
-  off, 0/3 with it on.
-- **Long citation IDs transcribe reliably.** Qwen3 4B copied IDs like
-  `srm/academic_integrity/9-verbatim_plagiarism_copy_and_paste_intel`
-  exactly, 8/8. No numbered-reference indirection layer is needed.
-- **NLI model choice:** `DeBERTa-v3-base-mnli-fever-anli` won on 20
-  hand-written claim/passage pairs — 90% overall, 100% on numeric mismatches
-  ("75%" vs "80%"). Known weakness: confuses who a rule applies to
-  (postgraduate-only vs. all students). Not yet tested on real retrieved
-  passages — that is the main open risk for Phase 4.
-- **VRAM:** all three models together peak at 3.9 GB of 8 GB.
+Asking *"What is the campus wifi password?"* produced **zero claims** — the
+model correctly declined rather than inventing an answer.
 
-## What is not built yet
+### Latency (measured, cold model load excluded)
 
-- Phase 4: the verifier — `verify/nli.py`, `verify/numeric.py`,
-  `verify/citation.py`
-- Phase 5: `abstain.py`, `pipeline.py`, transparent correction (dropping
-  unsupported claims while showing what was removed)
-- Phase 6: adversarial test question set
-- Phase 7: Streamlit UI
-- Phase 8: evaluation harness (claim P/R, citation accuracy, hallucination
-  rate, abstention quality, latency)
-- Phase 9: hardening, error analysis, demo script
+| Stage | Time |
+|---|---|
+| Retrieval | ~1s warm (~12–15s first call, embedding model load) |
+| Generation | ~8–9s |
+| Verification | ~15s for 3 claims |
 
-## Known limitations in current code
+Verification is the slowest stage. It scales with claims × cited passages ×
+windows. Batching the NLI calls is the obvious optimisation and has not been
+done.
 
-- Retrieval is dense-only; no BM25 or hybrid search yet, so exact terms and
-  numbers are matched only through the embedding
-- A few address fragments and table-of-contents lines are still misdetected
-  as section headings, producing small low-value sections. They point at real
-  text, so they are noise rather than wrong citations.
-- Roman-numeral headings ("II. ADMISSION TO EXAMINATIONS") are not detected;
-  that content merges into the preceding heading rather than being lost
-- Section structure is flat, not nested — "4.2.1" is captured and citable but
-  is not nested under a parent "4.2"
-- One large section in the attendance document still carries a junk heading
-  derived from a PDF table row
-- `data/manifest.yaml` lists a 2017-dated plagiarism policy because no newer
-  version was findable on SRM's official domains as of 2026-08-14
+---
 
-## Git state
+## 6. Findings worth keeping
 
-- Branch `main`, remote
-  `https://github.com/AbhishekVerma295/policy-verification-system.git`
-- All commits authored solely by the project owner, no co-author trailers
-- Recent commits:
-  - `ce06d51` feat(generate): add retrieval and structured claim generation
-  - `b92de7a` Phase 2: chunking and vector index
-  - `53867ef` fix(ingest): recover PDF headings buried mid-line
-  - `5b26865` fix(schema): make section citations unique per document
-  - `f0b4fb7` feat(ingest): add policy document ingestion pipeline
-  - `6c67098` Policy Verification System: Phase 0 complete
+Things that cost time to discover and would cost time to rediscover.
+
+**Qwen3 needs thinking mode disabled.** Qwen3 is a hybrid reasoning model, and
+Ollama returns its thinking tokens in a *separate* `thinking` field. With
+`format="json"` the entire reply lands there and `response` comes back empty —
+the model appears broken while working correctly. Controlled by
+`llm.disable_thinking`. Measured: 3/3 valid JSON with it off, 0/3 with it on.
+
+**Long citation IDs transcribe reliably.** A spike checked whether a 4B model
+could copy `srm/academic_integrity/9-verbatim_plagiarism_copy_and_paste_intel`
+character-for-character, since a garbled ID is indistinguishable from a
+fabricated one. It could — 8/8. No numbered-reference indirection was needed.
+A numbered scheme was ~44% faster but would have made fabricated-citation
+detection nearly impossible, so it was rejected.
+
+**NLI holds up on real passages.** The Phase 0 spike used 20 hand-written
+pairs. Real chunks are long, multi-rule, and full of PDF noise, so this was
+re-tested against live retrieved passages: **7/7**, with decisive confidences
+(1.00 / 0.95 / 0.00).
+
+**NLI model comparison** (20 hand-written pairs, Phase 0):
+
+| Model | Overall | Numeric |
+|---|---|---|
+| `DeBERTa-v3-base-mnli-fever-anli` | 90% | **100%** |
+| `cross-encoder/nli-deberta-v3-base` | 90% | 100% (0/2 on scope) |
+| `mDeBERTa-v3-base-xnli-multilingual` | 85% | 60% |
+
+Known weakness in the winner: **scope confusion** — mistaking a
+postgraduate-only rule for one applying to all students. Not yet addressed.
+
+**Citations collided in real documents.** SRM's scholarship page has several
+independent numbered lists ("2" appears six times meaning six different
+things); the Code of Conduct has six sections all headed "Consequence".
+Different passages were claiming the same citation ID, which would make
+verification unanswerable. Fixed by combining number + heading slug with an
+occurrence suffix.
+
+**PDF extraction buried 52 headings mid-line.** A stray table cell landed in
+front of headings with body text following on the same line
+(`R 7.3 Minimum Attendance:  A student must...`). The Academic Regulations
+document had collapsed from 52 sections to 7, with the flagship 75% rule
+inside a 39,000-character blob citable only as `yy_dd_c_l_ss_a`. Fixed by a
+normalising pass; that rule now cites as `srm/attendance/7.3-minimum_attendance`.
+
+**One oversized section monopolised retrieval.** Three of the top three
+results were chunks of a single examination section, pushing the actual
+attendance rule to rank 4. Fixed by the per-citation diversity cap.
+
+**The noise filter was too aggressive.** It was dropping short but genuine
+rules. The two errors are not symmetric — surviving noise merely scores badly,
+whereas dropped content is permanently unretrievable — so the threshold now
+errs toward keeping.
+
+---
+
+## 7. Not built yet
+
+| Phase | Scope |
+|---|---|
+| **5** | `abstain.py` — threshold logic over claim scores and retrieval scores; `pipeline.py` — wire retrieve → generate → verify → decide into one `Answer`; transparent correction (drop unsupported claims while showing what was removed) |
+| **6** | Adversarial question set — 60–80 items across five trap categories, split into tuning and held-out halves |
+| **7** | Streamlit UI — question box, per-claim colour-coded verdicts, expandable evidence, abstention banner, removed-claims panel |
+| **8** | Evaluation harness — claim P/R, citation accuracy, hallucination rate, abstention quality, latency; JSONL run logs |
+| **9** | Hardening, error analysis, demo script |
+
+`Answer` and `Timings` already exist in `schema.py` but nothing populates them
+yet — that is Phase 5's job.
+
+---
+
+## 8. Known limitations
+
+**Retrieval is dense-only.** No BM25 or hybrid search, so exact terms and
+identifiers are matched only through the embedding. Hybrid retrieval is a
+known improvement, not yet implemented.
+
+**Verification is slow.** ~15s for 3 claims on CPU. NLI calls are made one at
+a time; batching them is the obvious fix.
+
+**Scope confusion is unhandled.** The NLI model can mistake a
+postgraduate-only rule for one applying to all students. Identified in Phase 0,
+not yet mitigated. A lightweight scope check alongside the numeric guard is
+the likely approach.
+
+**Some heading noise remains.** A few address fragments and table-of-contents
+lines are still detected as sections, producing small low-value chunks. They
+point at real text, so they are noise rather than wrong citations.
+
+**Roman-numeral headings are not detected.** Content under
+"II. ADMISSION TO EXAMINATIONS" merges into the preceding section rather than
+being lost — a coarser citation grain, not missing content. Adding a
+Roman-numeral pattern risks a worse problem: false positives on the word "I".
+
+**Section structure is flat, not nested.** "4.2.1" is captured and citable but
+is not nested under a parent "4.2". Citation accuracy does not depend on that
+nesting, so this is a simplification rather than a correctness issue.
+
+**The plagiarism policy is dated 2017.** No newer version was findable on
+SRM's official domains as of 2026-08-14. Worth re-checking.
+
+**No abstention yet.** Unsupported claims are currently displayed with their
+verdicts rather than removed. Phase 5.
+
+---
+
+## 9. Repository conventions
+
+- **Commits** are authored solely by the project owner; no co-author trailers.
+- **Never commit or push without explicit approval**, every time.
+- **Corpus documents are never committed** — only `data/manifest.yaml`.
+- `data/raw/`, `data/processed/`, `data/index/` and `.venv/` are gitignored.
+- Tests must run without GPU, model download or network.
+
+### Recent commits
+
+```
+286efbc  Phase 4: claim verifier
+ce06d51  feat(generate): add retrieval and structured claim generation
+b92de7a  Phase 2: chunking and vector index
+53867ef  fix(ingest): recover PDF headings buried mid-line
+5b26865  fix(schema): make section citations unique per document
+f0b4fb7  feat(ingest): add policy document ingestion pipeline
+6c67098  Policy Verification System: Phase 0 complete
+```
+
+---
+
+## 10. Rebuilding from scratch
+
+```bash
+py -3.12 -m venv .venv
+.venv\Scripts\activate
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+pip install -r requirements.txt
+ollama pull qwen3:4b
+
+pytest                          # 137 tests
+python scripts/ingest.py        # 6 documents → 192 sections
+python scripts/build_index.py   # → 258 chunks, then a smoke search
+python scripts/ask.py "What is the minimum attendance requirement?"
+```
