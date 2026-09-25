@@ -3,7 +3,7 @@
 Detailed current state of the Policy Verification System. Written as a handoff
 document: it states what exists, what was measured, and what is not built yet.
 
-**Last updated:** after Phase 4 (the verifier), 2026-09-13.
+**Last updated:** after Phase 5 (abstention), 2026-09-13.
 
 For the project overview see [`README.md`](README.md). For the ideas behind
 it see [`CONCEPTS.md`](CONCEPTS.md).
@@ -20,13 +20,13 @@ insufficient.
 
 | | |
 |---|---|
-| **Phases complete** | 0, 1, 2, 3, 4 |
-| **Next** | Phase 5 — abstention and transparent correction |
-| **Tests** | 137 passing, no GPU / model / network required |
+| **Phases complete** | 0, 1, 2, 3, 4, 5 |
+| **Next** | Phase 6 — adversarial question set |
+| **Tests** | 168 passing, no GPU / model / network required |
 | **Lint** | ruff clean |
 | **Corpus** | 6 documents, 192 sections, 258 indexed chunks |
-| **Working end-to-end** | question → retrieval → claims → per-claim verdicts |
-| **Not yet working** | abstention, UI, evaluation harness |
+| **Working end-to-end** | question → retrieve → generate → verify → decide → `Answer` |
+| **Not yet working** | adversarial set, UI, evaluation harness |
 
 ---
 
@@ -92,7 +92,7 @@ The foundation; everything imports from here. Pure Pydantic models, no I/O.
 | `Chunk`, `RetrievedChunk` | What indexing and retrieval produce |
 | `Claim`, `DraftAnswer` | The structural contract the LLM must satisfy |
 | `CheckResults`, `ClaimVerdict` | Verification output |
-| `Answer`, `Timings` | The final response object — **defined, not yet populated** |
+| `Answer`, `Timings` | The final response object, populated by `pipeline.py` |
 | `PolicyType`, `SourceFormat`, `VerdictStatus` | `StrEnum`s, so they serialise as plain strings |
 
 `Document.citations()` is the authoritative way to cite sections. It assigns a
@@ -188,7 +188,34 @@ Three independent checks per claim, combined by `verifier.py`.
 - A fabricated citation alongside a valid one does not block the valid one;
   it is noted in the explanation.
 
-### 4.7 Scripts
+### 4.7 Abstention and the pipeline — Phase 5
+
+- **`abstain.py`** — two separate decisions. `should_keep()` decides which
+  claims survive (SUPPORTED *and* above `min_claim_score`; NEUTRAL means the
+  evidence did not settle it, which is not the same as true). `decide()`
+  partitions the verdicts and decides whether enough survived to answer at
+  all, checking retrieval strength first — if the corpus does not cover the
+  question, any claims built on it were not grounded in anything worth
+  standing behind.
+
+  `AbstentionDecision.refuted` is exposed separately from `.unsupported`,
+  because "the policy says the opposite" is a more serious finding than "the
+  policy does not say" and is the most useful thing to show a reader.
+
+  **Nothing generated is ever discarded.** Every claim ends up in `kept` or
+  `removed`, including when the system abstains. A test asserts this
+  invariant directly, since it is easy to break when adding a branch.
+
+- **`pipeline.py`** — `answer_question()` runs retrieve → generate → verify →
+  decide, times each stage, and returns a populated `Answer`. The store, LLM
+  and NLI checker are all injectable, so callers can load models once and
+  reuse them, and tests can substitute fakes and run the whole path in
+  milliseconds.
+
+  An abstention returns a normal `Answer` with `abstained=True` and a reason —
+  it is a result, not an error, so callers do not have to catch anything.
+
+### 4.8 Scripts
 
 | Script | Does |
 |---|---|
@@ -196,7 +223,7 @@ Three independent checks per claim, combined by `verifier.py`.
 | `scripts/build_index.py` | processed documents → chunks → embedded index, then a smoke search |
 | `scripts/ask.py` | question → retrieval → claims → verdicts, printed per claim |
 
-### 4.8 Tests — 137 total
+### 4.9 Tests — 168 total
 
 | File | Tests | Covers |
 |---|---|---|
@@ -205,10 +232,13 @@ Three independent checks per claim, combined by `verifier.py`.
 | `test_ingest.py` | 21 | HTML/PDF extraction, heading detection, section splitting |
 | `test_generate.py` | 20 | Prompt building, JSON parsing, retries, fabrication reporting |
 | `test_indexing.py` | 19 | Chunk boundaries, noise filtering, index mismatch guard |
+| `test_abstain.py` | 18 | Keep/remove logic, abstention triggers, the no-claim-lost invariant |
+| `test_pipeline.py` | 13 | End-to-end wiring, timings, transparent correction |
 | `test_retrieve.py` | 7 | Diversity cap behaviour |
 
 Runs in ~0.3s with no GPU, model or network. `conftest.py` provides `FakeLLM`;
-`test_verify.py` provides a stub NLI checker. Model quality is measured by the
+`test_verify.py` and `test_pipeline.py` provide stub NLI checkers and a stub
+store. Model quality is measured by the
 evaluation harness (Phase 8), not asserted here — these test plumbing and
 decision logic.
 
@@ -328,14 +358,13 @@ errs toward keeping.
 
 | Phase | Scope |
 |---|---|
-| **5** | `abstain.py` — threshold logic over claim scores and retrieval scores; `pipeline.py` — wire retrieve → generate → verify → decide into one `Answer`; transparent correction (drop unsupported claims while showing what was removed) |
 | **6** | Adversarial question set — 60–80 items across five trap categories, split into tuning and held-out halves |
 | **7** | Streamlit UI — question box, per-claim colour-coded verdicts, expandable evidence, abstention banner, removed-claims panel |
 | **8** | Evaluation harness — claim P/R, citation accuracy, hallucination rate, abstention quality, latency; JSONL run logs |
 | **9** | Hardening, error analysis, demo script |
 
-`Answer` and `Timings` already exist in `schema.py` but nothing populates them
-yet — that is Phase 5's job.
+`Answer` and `Timings` are now populated by `pipeline.answer_question()`.
+Nothing yet writes them to disk — JSONL run logging is Phase 8.
 
 ---
 
@@ -369,8 +398,11 @@ nesting, so this is a simplification rather than a correctness issue.
 **The plagiarism policy is dated 2017.** No newer version was findable on
 SRM's official domains as of 2026-08-14. Worth re-checking.
 
-**No abstention yet.** Unsupported claims are currently displayed with their
-verdicts rather than removed. Phase 5.
+**Abstention thresholds are untuned.** `min_claim_score` (0.5),
+`min_supported_claims` (1) and `min_retrieval_score` (0.25) are reasoned
+defaults, not measured ones. They need tuning against the tuning half of the
+adversarial set once Phase 6 exists — and false abstention needs measuring, or
+tuning has nothing honest to optimise against.
 
 ---
 
@@ -405,7 +437,7 @@ pip install torch --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
 ollama pull qwen3:4b
 
-pytest                          # 137 tests
+pytest                          # 168 tests
 python scripts/ingest.py        # 6 documents → 192 sections
 python scripts/build_index.py   # → 258 chunks, then a smoke search
 python scripts/ask.py "What is the minimum attendance requirement?"

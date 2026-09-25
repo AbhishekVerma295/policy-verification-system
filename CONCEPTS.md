@@ -329,8 +329,11 @@ system started to say and then decided it could not stand behind. That record
 *is* the transparency feature — it is the difference between a system you can
 audit and one you have to trust.
 
-In this codebase: `schema.py` already defines `Answer.claims_removed`;
-the logic itself is Phase 5, not yet built.
+In this codebase: `abstain.py` decides what to keep and whether to answer,
+`pipeline.py` assembles the `Answer`, and `schema.py` defines
+`Answer.claims_removed`. A test asserts the invariant that every generated
+claim ends up in either `claims_kept` or `claims_removed` — nothing the model
+produced ever disappears without a trace.
 
 ---
 

@@ -24,8 +24,9 @@ CLAIM  "Students who miss classes must pay a fine"         NEUTRAL    0.00
 
 Everything runs locally. No API keys, no cloud services, no per-token costs.
 
-**Status:** Phases 0–4 complete. Retrieval, generation and verification all
-work end-to-end. Next is Phase 5 (abstention). See [Roadmap](#roadmap).
+**Status:** Phases 0–5 complete. The full pipeline works end-to-end:
+retrieve, generate, verify, and decide whether to answer at all. Next is
+Phase 6 (the adversarial question set). See [Roadmap](#roadmap).
 
 ---
 
@@ -97,13 +98,13 @@ question
    │                • do the numbers agree?                 deterministic
    │                • does the cited section exist?         deterministic
    ▼
-[4] DECIDE ────── keep supported claims, remove the rest,       ← Phase 5
+[4] DECIDE ────── keep supported claims, remove the rest,
    │              abstain entirely if too little survives
    ▼
 answer + evidence + what was removed and why
 ```
 
-Steps 1–3 are built and working. Step 4 is next.
+All four steps are built and working.
 
 ---
 
@@ -142,7 +143,7 @@ Verify the install:
 pytest
 ```
 
-**137 tests** should pass in under a second. They need no GPU, no model and no
+**168 tests** should pass in under a second. They need no GPU, no model and no
 network — deliberately, so the suite runs anywhere.
 
 ---
@@ -161,11 +162,43 @@ Ask a question (needs Ollama running):
 ```bash
 python scripts/ask.py "What is the minimum attendance requirement?"
 python scripts/ask.py "Can a parent stay overnight?" --policy residence
-python scripts/ask.py "..." -k 8 --show-passages
+python scripts/ask.py "..." -k 8 --json
 ```
 
 Output is per claim, with a verdict, a confidence, the citation, and a
-plain-language explanation of *why* that verdict was reached.
+plain-language explanation of *why* that verdict was reached. Claims that
+failed verification are **shown, not hidden**:
+
+```
+ANSWER  (1 verified claims)
+
+  [1] SUPPORTED  (1.00)
+      A student must maintain at least 75% attendance in individual courses.
+        -> srm/attendance/7.3-minimum_attendance
+
+  Note: The model cited 1 section(s) that do not exist: srm/attendance/99-does-not-exist.
+
+--------------------------------------------------------------------------
+
+REMOVED  (3 claims the system would not stand behind)
+  Shown rather than hidden, so you can see what was rejected and why.
+
+  [1] REFUTED  (1.00)
+      A student must maintain at least 90% attendance in individual courses.
+      The cited policy text contradicts this claim (confidence 1.00).
+      numbers: claim states 90%, not found in evidence (evidence has: 25%, 75%)
+
+  [2] UNVERIFIED  (0.00)
+      Students who miss classes are fined 500 rupees.
+      The cited policy text neither clearly supports nor contradicts this claim.
+```
+
+When too little survives, the system declines entirely and says why:
+
+```
+  NO ANSWER GIVEN
+  The retrieved passages do not answer this question, so no claims were made.
+```
 
 ---
 
@@ -190,10 +223,12 @@ src/policyverify/        the core library — no UI, no web framework
     numeric.py             do the numbers agree?
     citation.py            is the citation real? was it shown to the model?
     verifier.py            combines the three into one verdict
+  abstain.py             which claims to keep; whether to answer at all
+  pipeline.py            the whole system end to end, in one function
 
 scripts/                 ingest.py, build_index.py, ask.py
 spikes/                  throwaway experiments that de-risked decisions
-tests/                   137 tests, no GPU or network needed
+tests/                   168 tests, no GPU or network needed
 data/manifest.yaml       the corpus recipe (URLs + checksums, not the PDFs)
 config.yaml              every tunable knob in one place
 ```
@@ -315,8 +350,8 @@ it was tuned for.
 | 2 | Chunking and the vector index | ✅ done |
 | 3 | Retrieval and structured claim generation | ✅ done |
 | 4 | **The verifier** — NLI, numeric guards, citation checks | ✅ done |
-| 5 | Abstention and transparent correction | next |
-| 6 | Adversarial question set | |
+| 5 | Abstention and transparent correction | ✅ done |
+| 6 | Adversarial question set | next |
 | 7 | Streamlit interface | |
 | 8 | Evaluation harness | |
 | 9 | Hardening, error analysis, demo | |
@@ -329,7 +364,7 @@ lives in [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
 ## Development
 
 ```bash
-pytest                    # 137 tests, no GPU or network
+pytest                    # 168 tests, no GPU or network
 python -m ruff check .    # lint
 python -m ruff check . --fix
 ```

@@ -4,31 +4,84 @@ Ask the system a question from the command line.
 Usage:
     python scripts/ask.py "What is the minimum attendance requirement?"
     python scripts/ask.py "Can a parent stay overnight?" --policy residence
-    python scripts/ask.py "..." -k 8 --show-passages
+    python scripts/ask.py "..." -k 8 --json
 
 Requires an index (python scripts/build_index.py) and a running Ollama.
 
-This is the same code path the UI and the evaluation harness use - they all
-call into src/policyverify/, so a result seen here is the result they get.
+This calls pipeline.answer_question(), the same entry point the UI and the
+evaluation harness use, so what you see here is what they measure.
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
-import time
-from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from policyverify.config import get_config  # noqa: E402
-from policyverify.generate import GenerationError, generate_answer_draft  # noqa: E402
-from policyverify.indexing import IndexMismatchError, VectorStore  # noqa: E402
+from policyverify.generate import GenerationError  # noqa: E402
+from policyverify.indexing import IndexMismatchError  # noqa: E402
 from policyverify.llm import LLMError  # noqa: E402
-from policyverify.retrieve import retrieve  # noqa: E402
-from policyverify.schema import VerdictStatus  # noqa: E402
-from policyverify.verify import verify_claims  # noqa: E402
+from policyverify.pipeline import answer_question  # noqa: E402
+from policyverify.schema import Answer, ClaimVerdict, VerdictStatus  # noqa: E402
+
+LABELS = {
+    VerdictStatus.SUPPORTED: "SUPPORTED",
+    VerdictStatus.REFUTED: "REFUTED",
+    VerdictStatus.NEUTRAL: "UNVERIFIED",
+}
+WIDTH = 74
+
+
+def print_claim(index: int, verdict: ClaimVerdict) -> None:
+    label = LABELS[verdict.status]
+    print(f"\n  [{index}] {label}  ({verdict.score:.2f})")
+    print(f"      {verdict.claim.text}")
+    for citation in verdict.claim.citation_ids:
+        print(f"        -> {citation}")
+    if not verdict.claim.citation_ids:
+        print("        -> (no citation given)")
+    print(f"      {verdict.explanation}")
+    if verdict.checks.numeric_detail and verdict.checks.numeric_ok is False:
+        print(f"      numbers: {verdict.checks.numeric_detail}")
+
+
+def render(answer: Answer) -> None:
+    print(f"\nQ: {answer.question}")
+    print("=" * WIDTH)
+
+    if answer.abstained:
+        print("\n  NO ANSWER GIVEN")
+        print(f"  {answer.reason}")
+    elif answer.claims_kept:
+        print(f"\nANSWER  ({len(answer.claims_kept)} verified claims)")
+        for i, verdict in enumerate(answer.claims_kept, 1):
+            print_claim(i, verdict)
+        if answer.reason:
+            print(f"\n  Note: {answer.reason}")
+
+    if answer.claims_removed:
+        print("\n" + "-" * WIDTH)
+        print(f"\nREMOVED  ({len(answer.claims_removed)} claims the system would not stand behind)")
+        print("  Shown rather than hidden, so you can see what was rejected and why.")
+        for i, verdict in enumerate(answer.claims_removed, 1):
+            print_claim(i, verdict)
+
+    print("\n" + "=" * WIDTH)
+    t = answer.timings
+    print(
+        f"  retrieve {t.retrieve_ms:.0f}ms | generate {t.generate_ms:.0f}ms "
+        f"| verify {t.verify_ms:.0f}ms | total {t.total_ms:.0f}ms"
+    )
+    print(
+        f"  {len(answer.claims_kept)} kept, {len(answer.claims_removed)} removed"
+        f"{'  (ABSTAINED)' if answer.abstained else ''}"
+    )
+    if answer.claims_kept:
+        print(f"  sources: {', '.join(answer.all_citations())}")
+    print()
 
 
 def main() -> int:
@@ -37,93 +90,28 @@ def main() -> int:
     parser.add_argument("-k", type=int, default=None, help="passages to retrieve")
     parser.add_argument("--policy", default=None, help="restrict to one policy type")
     parser.add_argument("--university", default=None, help="restrict to one university")
-    parser.add_argument(
-        "--show-passages", action="store_true", help="print the retrieved passages"
-    )
+    parser.add_argument("--json", action="store_true", help="print the Answer as JSON")
     args = parser.parse_args()
 
-    config = get_config()
-
     try:
-        t0 = time.time()
-        chunks = retrieve(
+        answer = answer_question(
             args.question,
             k=args.k,
             university=args.university,
             policy_type=args.policy,
-            config=config,
+            config=get_config(),
         )
-        retrieve_ms = (time.time() - t0) * 1000
     except IndexMismatchError as exc:
         print(f"\n{exc}\n")
         return 1
-
-    print(f"\nQ: {args.question}")
-    print(f"\nretrieved {len(chunks)} passages in {retrieve_ms:.0f}ms")
-    for r in chunks:
-        preview = " ".join(r.chunk.text.split())[:88]
-        print(f"  [{r.score:.3f}] {r.chunk.citation_id}")
-        if args.show_passages:
-            print(f"          {preview}...")
-
-    if not chunks:
-        print("\nNo passages retrieved - nothing to ground an answer in.")
-        return 0
-
-    try:
-        t0 = time.time()
-        draft, fabricated = generate_answer_draft(args.question, chunks, config=config)
-        generate_ms = (time.time() - t0) * 1000
     except (LLMError, GenerationError) as exc:
-        print(f"\nGeneration failed: {exc}\n")
+        print(f"\nCould not produce an answer: {exc}\n")
         return 1
 
-    print(f"\n{len(draft.claims)} claims generated in {generate_ms:.0f}ms")
-
-    if not draft.claims:
-        print("\nThe model produced no claims - the passages do not answer this.\n")
-        return 0
-
-    t0 = time.time()
-    verdicts = verify_claims(draft.claims, chunks, store=VectorStore(config), config=config)
-    verify_ms = (time.time() - t0) * 1000
-
-    print(f"verified in {verify_ms:.0f}ms\n")
-    print("-" * 72)
-
-    symbols = {
-        VerdictStatus.SUPPORTED: "SUPPORTED",
-        VerdictStatus.REFUTED: "REFUTED  ",
-        VerdictStatus.NEUTRAL: "UNSURE   ",
-    }
-    for i, verdict in enumerate(verdicts, 1):
-        print(f"\nCLAIM {i}  [{symbols[verdict.status]}  {verdict.score:.2f}]")
-        print(f"  {verdict.claim.text}")
-        for citation in verdict.claim.citation_ids:
-            print(f"    -> {citation}")
-        print(f"  {verdict.explanation}")
-        if verdict.checks.numeric_detail and not verdict.checks.numeric_ok:
-            print(f"  numbers: {verdict.checks.numeric_detail}")
-
-    print("\n" + "-" * 72)
-    counts = Counter(v.status for v in verdicts)
-    print(
-        f"  {counts[VerdictStatus.SUPPORTED]} supported, "
-        f"{counts[VerdictStatus.REFUTED]} refuted, "
-        f"{counts[VerdictStatus.NEUTRAL]} unsure"
-    )
-    print(
-        f"  timings: retrieve {retrieve_ms:.0f}ms | generate {generate_ms:.0f}ms "
-        f"| verify {verify_ms:.0f}ms"
-    )
-
-    if fabricated:
-        print("\n  FABRICATED CITATIONS (not among the retrieved passages):")
-        for citation in fabricated:
-            print(f"    !! {citation}")
-
-    print("\nNOTE: unsupported claims are still shown - dropping them and")
-    print("showing what was removed is Phase 5.\n")
+    if args.json:
+        print(answer.model_dump_json(indent=2))
+    else:
+        render(answer)
     return 0
 
 
