@@ -319,7 +319,9 @@ abstention quality is measured as a 2×2, not a single number:
 | **Question was unanswerable** | **failure** | correct |
 
 Both off-diagonal cells matter. Tracking only one produces a system that is
-either dangerous or useless.
+either dangerous or useless. This is why 15 of the 64 adversarial questions
+are deliberately unanswerable — without them, the bottom row could not be
+measured and over-refusal would be invisible.
 
 ### Transparent correction
 
@@ -350,22 +352,58 @@ question:
 | **Abstention quality** | Does it refuse when it should — and not when it shouldn't? |
 | **Latency** | Split by stage, so you know *where* the time goes |
 
-These are measured against an **adversarial set**: questions written
+These are measured against an **adversarial set**: 64 questions written
 specifically to trip the system up, in five categories —
 
-1. **Cross-regulation confusion** — same question, different right answer
-   depending on year or programme
-2. **Numeric traps** — thresholds, deadlines, percentages
-3. **Unanswerable but plausible** — not covered by the corpus at all
-4. **Negation and exceptions** — "except when…", conditional clauses
-5. **False premises** — "Why does the policy require X?" when it does not
+1. **Numeric traps** (16) — thresholds and deadlines, where being wrong by one
+   digit changes what happens to a student
+2. **Unanswerable but plausible** (14) — not covered by the corpus at all; the
+   correct behaviour is to abstain
+3. **False premises** (12) — "Why does the policy require 90% attendance?"
+   when it requires 75%. Correct the premise, don't elaborate on it
+4. **Negation and exceptions** (12) — "except when…", where dropping the
+   carve-out makes the rule harsher or softer than it is
+5. **Cross-policy confusion** (10) — the same figure meaning different things
+   in two policies. `75%` is the minimum attendance rule *and* a tuition-waiver
+   tier, so answering with the right number from the wrong policy is a
+   realistic error
+
+### Labelling what can be known in advance
+
+Claims are generated fresh on every run, so they cannot be labelled ahead of
+time. Everything about the *question* can be:
+
+| Label | Meaning |
+|---|---|
+| `answerable` | Does the corpus cover this at all? Drives abstention scoring |
+| `expected_citations` | Which sections a correct answer must rest on |
+| `required_values` | Figures a correct answer must contain |
+| `forbidden_values` | Figures that would mean the system got it wrong |
+
+`forbidden_values` is what makes most of the set score **automatically**. For
+a numeric trap the wrong answer is known in advance — if `80%` turns up in a
+claim the system stood behind, that is a hallucination, and nobody has to read
+it to find out.
 
 ### Tuning versus reporting
 
-The set is split in half. Thresholds are tuned on one half and results
-reported on the other. Tuning and reporting on the same questions would only
-prove the system works on the questions it was tuned for — a result that
-sounds impressive and means nothing.
+The set is split in half — 33 tuning, 31 held-out, stratified so both halves
+cover every category. Thresholds are tuned on one half and results reported on
+the other. Tuning and reporting on the same questions would only prove the
+system works on the questions it was tuned for — a result that sounds
+impressive and means nothing.
+
+### A gap this set already found
+
+Asked *"How much does the hostel mess cost per month?"* — a figure the corpus
+never states — the system produced seven claims about the mess, every one
+correctly verified and cited, none of them about cost. It did not invent a
+price; it answered a different question and stood behind it.
+
+That is worth understanding as a concept, not just a bug: **grounding and
+relevance are different properties.** Verification only checks the first. A
+claim can be perfectly supported by the passage it cites and still be no
+answer at all.
 
 ---
 
@@ -383,6 +421,9 @@ sounds impressive and means nothing.
 | **Hallucination** | Fluent, confident output not grounded in any source |
 | **NLI** | Natural Language Inference — does text A prove text B? |
 | **RAG** | Retrieval-Augmented Generation — fetch sources, then answer from them |
+| **Adversarial set** | Questions written specifically to make the system fail |
+| **False abstention** | Refusing a question that could have been answered |
+| **Held-out set** | The half used for reporting, never for tuning |
 | **Spike** | A throwaway experiment run *before* building on an assumption |
 | **Vector database** | Storage that finds the nearest vectors quickly |
 
@@ -394,3 +435,5 @@ sounds impressive and means nothing.
 - [`PROJECT_STATUS.md`](PROJECT_STATUS.md) — current state, every finding, what is not built
 - `src/policyverify/schema.py` — the data contracts; the best single file to
   read first, because everything else depends on it
+- `eval/adversarial.jsonl` — the 64 trap questions, each with a note
+  explaining what it is trying to break

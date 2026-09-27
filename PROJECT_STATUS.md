@@ -3,7 +3,7 @@
 Detailed current state of the Policy Verification System. Written as a handoff
 document: it states what exists, what was measured, and what is not built yet.
 
-**Last updated:** after Phase 5 (abstention), 2026-09-13.
+**Last updated:** after Phase 6 (adversarial set), 2026-09-27.
 
 For the project overview see [`README.md`](README.md). For the ideas behind
 it see [`CONCEPTS.md`](CONCEPTS.md).
@@ -20,13 +20,14 @@ insufficient.
 
 | | |
 |---|---|
-| **Phases complete** | 0, 1, 2, 3, 4, 5 |
-| **Next** | Phase 6 — adversarial question set |
-| **Tests** | 168 passing, no GPU / model / network required |
+| **Phases complete** | 0, 1, 2, 3, 4, 5, 6 |
+| **Next** | Phase 7 — Streamlit interface |
+| **Tests** | 193 passing, no GPU / model / network required |
 | **Lint** | ruff clean |
 | **Corpus** | 6 documents, 192 sections, 258 indexed chunks |
 | **Working end-to-end** | question → retrieve → generate → verify → decide → `Answer` |
-| **Not yet working** | adversarial set, UI, evaluation harness |
+| **Adversarial set** | 64 labelled questions, validated against the corpus |
+| **Not yet working** | UI, evaluation harness (nothing computes the metrics yet) |
 
 ---
 
@@ -215,15 +216,52 @@ Three independent checks per claim, combined by `verifier.py`.
   An abstention returns a normal `Answer` with `abstained=True` and a reason —
   it is a result, not an error, so callers do not have to catch anything.
 
-### 4.8 Scripts
+### 4.8 The adversarial set — Phase 6
+
+- **`evalset.py`** — `EvalItem` schema, JSONL loader, and
+  `validate_against_corpus()`. The schema rejects incoherent labels: an
+  unanswerable item cannot expect citations, and an answerable one must name
+  at least one, or citation accuracy cannot be scored for it.
+- **`eval/adversarial.jsonl`** — 64 questions. Comments and blank lines are
+  skipped by the loader, so the file stays annotated and machine-readable.
+- **`scripts/validate_evalset.py`** — checks the schema, prints the
+  distribution, warns if either half is missing a category, and confirms every
+  expected citation resolves against the live index.
+
+| Category | Items | The trap |
+|---|---|---|
+| `numeric` | 16 | Thresholds and deadlines; one digit changes the outcome |
+| `unanswerable` | 14 | Not covered by the corpus — should abstain |
+| `false_premise` | 12 | The question asserts something untrue |
+| `negation_exception` | 12 | Rules with carve-outs that must not be dropped |
+| `cross_policy` | 10 | The same figure meaning different things in two policies |
+
+33 tuning / 31 held-out, stratified so both halves cover every category.
+**15 of 64 are unanswerable**, which is what makes over-refusal measurable.
+
+Labels fixed in advance: `answerable`, `expected_citations`,
+`required_values`, `forbidden_values`. The last of these is what makes most
+items score automatically — for a numeric trap the wrong answer is known, so
+`80%` appearing in a kept claim is a hallucination no human needs to confirm.
+
+**Trap-design correction.** Earlier docs described "cross-regulation
+confusion" (same question, different answer under a different dated
+regulation) as the signature trap. That is not available: only one regulation
+document is in the corpus. The implemented equivalent is `cross_policy`,
+which is real — `75%` is the attendance minimum in one policy and a
+tuition-waiver tier in another. Adding a second dated regulation PDF would
+make the original trap possible.
+
+### 4.9 Scripts
 
 | Script | Does |
 |---|---|
 | `scripts/ingest.py` | manifest → downloaded → extracted → `Document` JSON |
 | `scripts/build_index.py` | processed documents → chunks → embedded index, then a smoke search |
-| `scripts/ask.py` | question → retrieval → claims → verdicts, printed per claim |
+| `scripts/ask.py` | question → retrieval → claims → verdicts → decision |
+| `scripts/validate_evalset.py` | schema + corpus check on the adversarial set |
 
-### 4.9 Tests — 168 total
+### 4.10 Tests — 193 total
 
 | File | Tests | Covers |
 |---|---|---|
@@ -232,8 +270,9 @@ Three independent checks per claim, combined by `verifier.py`.
 | `test_ingest.py` | 21 | HTML/PDF extraction, heading detection, section splitting |
 | `test_generate.py` | 20 | Prompt building, JSON parsing, retries, fabrication reporting |
 | `test_indexing.py` | 19 | Chunk boundaries, noise filtering, index mismatch guard |
-| `test_abstain.py` | 18 | Keep/remove logic, abstention triggers, the no-claim-lost invariant |
-| `test_pipeline.py` | 13 | End-to-end wiring, timings, transparent correction |
+| `test_evalset.py` | 25 | Label coherence, loading, corpus validation, properties of the real set |
+| `test_abstain.py` | 19 | Keep/remove logic, abstention triggers, the no-claim-lost invariant |
+| `test_pipeline.py` | 12 | End-to-end wiring, timings, transparent correction |
 | `test_retrieve.py` | 7 | Diversity cap behaviour |
 
 Runs in ~0.3s with no GPU, model or network. `conftest.py` provides `FakeLLM`;
@@ -329,6 +368,15 @@ re-tested against live retrieved passages: **7/7**, with decisive confidences
 Known weakness in the winner: **scope confusion** — mistaking a
 postgraduate-only rule for one applying to all students. Not yet addressed.
 
+**Sampling the adversarial set found two dataset bugs and one system gap.**
+Running five items live gave 3/5. The two failures were informative rather
+than noisy: one exposed the relevance gap above, and the other showed four
+`false_premise` items were mislabelled `answerable: false` when the topic *is*
+covered and the system should correct the premise rather than abstain —
+inconsistent with how `fp-001` was labelled. One note was also factually
+wrong: it claimed no grace-mark policy exists, when the examination policy
+states a maximum of 5 grace marks. All four items were relabelled.
+
 **Citations collided in real documents.** SRM's scholarship page has several
 independent numbered lists ("2" appears six times meaning six different
 things); the Code of Conduct has six sections all headed "Consequence".
@@ -358,7 +406,6 @@ errs toward keeping.
 
 | Phase | Scope |
 |---|---|
-| **6** | Adversarial question set — 60–80 items across five trap categories, split into tuning and held-out halves |
 | **7** | Streamlit UI — question box, per-claim colour-coded verdicts, expandable evidence, abstention banner, removed-claims panel |
 | **8** | Evaluation harness — claim P/R, citation accuracy, hallucination rate, abstention quality, latency; JSONL run logs |
 | **9** | Hardening, error analysis, demo script |
@@ -369,6 +416,17 @@ Nothing yet writes them to disk — JSONL run logging is Phase 8.
 ---
 
 ## 8. Known limitations
+
+**Grounding is checked; relevance is not.** Verification asks whether a claim
+is supported by the text it cites, never whether it answers the question.
+Found by sampling the adversarial set live: asked *"How much does the hostel
+mess cost per month?"* — a figure the corpus never states — the system
+returned seven claims about the mess, all correctly verified and cited, none
+about cost. It did not invent a price; it answered a different question and
+stood behind it. Each claim is individually grounded, so each one passes and
+nothing objects. A relevance check belongs between generation and abstention
+and is not built. This will inflate apparent quality in Phase 8 unless
+addressed.
 
 **Retrieval is dense-only.** No BM25 or hybrid search, so exact terms and
 identifiers are matched only through the embedding. Hybrid retrieval is a
@@ -437,8 +495,9 @@ pip install torch --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
 ollama pull qwen3:4b
 
-pytest                          # 168 tests
-python scripts/ingest.py        # 6 documents → 192 sections
-python scripts/build_index.py   # → 258 chunks, then a smoke search
+pytest                             # 193 tests
+python scripts/ingest.py           # 6 documents → 192 sections
+python scripts/build_index.py      # → 258 chunks, then a smoke search
+python scripts/validate_evalset.py # 64 adversarial items, citations resolve
 python scripts/ask.py "What is the minimum attendance requirement?"
 ```

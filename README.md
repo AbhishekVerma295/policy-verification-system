@@ -24,9 +24,9 @@ CLAIM  "Students who miss classes must pay a fine"         NEUTRAL    0.00
 
 Everything runs locally. No API keys, no cloud services, no per-token costs.
 
-**Status:** Phases 0–5 complete. The full pipeline works end-to-end:
-retrieve, generate, verify, and decide whether to answer at all. Next is
-Phase 6 (the adversarial question set). See [Roadmap](#roadmap).
+**Status:** Phases 0–6 complete. The full pipeline works end-to-end, and a
+64-question adversarial set exists to measure it against. Next is Phase 7
+(the Streamlit interface). See [Roadmap](#roadmap).
 
 ---
 
@@ -39,7 +39,7 @@ Phase 6 (the adversarial question set). See [Roadmap](#roadmap).
 - [Architecture](#architecture)
 - [The corpus](#the-corpus)
 - [Design decisions](#design-decisions)
-- [Evaluation plan](#evaluation-plan)
+- [Evaluation](#evaluation)
 - [Roadmap](#roadmap)
 - [Development](#development)
 
@@ -143,7 +143,7 @@ Verify the install:
 pytest
 ```
 
-**168 tests** should pass in under a second. They need no GPU, no model and no
+**193 tests** should pass in under a second. They need no GPU, no model and no
 network — deliberately, so the suite runs anywhere.
 
 ---
@@ -225,10 +225,12 @@ src/policyverify/        the core library — no UI, no web framework
     verifier.py            combines the three into one verdict
   abstain.py             which claims to keep; whether to answer at all
   pipeline.py            the whole system end to end, in one function
+  evalset.py             the adversarial set: schema, loading, validation
 
-scripts/                 ingest.py, build_index.py, ask.py
+scripts/                 ingest.py, build_index.py, ask.py, validate_evalset.py
+eval/adversarial.jsonl   64 labelled trap questions
 spikes/                  throwaway experiments that de-risked decisions
-tests/                   168 tests, no GPU or network needed
+tests/                   193 tests, no GPU or network needed
 data/manifest.yaml       the corpus recipe (URLs + checksums, not the PDFs)
 config.yaml              every tunable knob in one place
 ```
@@ -314,9 +316,23 @@ Rebuild with a different model and forget, and search silently returns
 nonsense with no error at all. It is the most common bug in systems like this,
 so the store refuses to search a mismatched index rather than guessing.
 
----
+### Known gap: grounding is checked, relevance is not
 
-## Evaluation plan
+Verification asks whether a claim is supported by the text it cites. It never
+asks whether the claim **answers the question**. Those are different
+properties, and the difference is visible in practice.
+
+Asked *"How much does the hostel mess cost per month?"* — a figure the corpus
+never states — the system returned seven claims about the mess, every one of
+them correctly verified and correctly cited, and **none of them about cost**.
+It did not hallucinate a price. It answered a different question and stood
+behind it.
+
+Nothing in the current design would catch that: each claim is individually
+grounded, so each one passes. A relevance check belongs between generation and
+abstention, and it is not built.
+
+## Evaluation
 
 Five metrics, no more:
 
@@ -328,16 +344,46 @@ Five metrics, no more:
 | Abstention quality | Does it refuse when it should — and **not** when it shouldn't? |
 | Latency | Split across retrieve / generate / verify |
 
-To be measured against a hand-built adversarial set of 60–80 questions across
-five trap categories: cross-regulation confusion (SRM publishes several dated
-regulation versions, so the same question has a different right answer by year
-or programme), numeric traps, unanswerable-but-plausible, negation and
-exceptions, and false premises.
+### The adversarial set
 
-The set will be split into a **tuning half** and a **held-out half**.
-Thresholds get tuned on the first and results reported on the second — tuning
-and reporting on the same questions would only prove it works on the questions
-it was tuned for.
+**64 hand-written questions** in [`eval/adversarial.jsonl`](eval/adversarial.jsonl),
+each labelled with the behaviour a correct system would show.
+
+| Category | Items | The trap |
+|---|---|---|
+| `numeric` | 16 | Thresholds and deadlines, where one digit changes the outcome |
+| `unanswerable` | 14 | Plausible questions the corpus does not cover — should abstain |
+| `false_premise` | 12 | The question asserts something untrue; correct it, don't elaborate |
+| `negation_exception` | 12 | Rules with carve-outs that must not be dropped |
+| `cross_policy` | 10 | The same figure meaning different things in two policies |
+
+**15 of the 64 are unanswerable**, which is what makes over-refusal measurable
+rather than a blind spot.
+
+Most items score **automatically**, because what can be known in advance is
+labelled in advance: `expected_citations`, `required_values`, and
+`forbidden_values`. For a numeric trap the wrong answer is known — if `80%`
+appears in a claim the system stood behind, that is a hallucination, and no
+human has to read it to find out.
+
+`python scripts/validate_evalset.py` checks the schema and confirms every
+expected citation resolves against the real index. A set citing sections that
+do not exist would silently corrupt every number computed from it.
+
+### Tuning versus held-out
+
+33 tuning / 31 held-out, stratified so both halves cover every category.
+Thresholds are tuned on the first and results reported on the second — tuning
+and reporting on the same questions would only prove the system works on the
+questions it was tuned for.
+
+> **Note on trap design.** Earlier drafts of this README described
+> "cross-regulation confusion" — the same question having a different answer
+> under a different dated regulation. That trap is not available here: only
+> one regulation document (2021 UG/Integrated PG) is in the corpus. The
+> implemented equivalent is `cross_policy`, which is real — `75%` is the
+> minimum attendance rule in one policy and a tuition-waiver tier in another.
+> Adding a second dated regulation PDF would make the original trap possible.
 
 ---
 
@@ -351,8 +397,8 @@ it was tuned for.
 | 3 | Retrieval and structured claim generation | ✅ done |
 | 4 | **The verifier** — NLI, numeric guards, citation checks | ✅ done |
 | 5 | Abstention and transparent correction | ✅ done |
-| 6 | Adversarial question set | next |
-| 7 | Streamlit interface | |
+| 6 | Adversarial question set | ✅ done |
+| 7 | Streamlit interface | next |
 | 8 | Evaluation harness | |
 | 9 | Hardening, error analysis, demo | |
 
@@ -364,7 +410,7 @@ lives in [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
 ## Development
 
 ```bash
-pytest                    # 168 tests, no GPU or network
+pytest                    # 193 tests, no GPU or network
 python -m ruff check .    # lint
 python -m ruff check . --fix
 ```
