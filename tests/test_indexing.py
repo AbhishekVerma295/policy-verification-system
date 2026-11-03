@@ -308,3 +308,65 @@ def test_build_refuses_empty_chunk_list(tmp_path):
     config.paths.index = str(tmp_path / "index")
     with pytest.raises(ValueError, match="zero chunks"):
         VectorStore(config).build([])
+
+
+# ---------------------------------------------------------------------------
+# get_by_citation ordering
+# ---------------------------------------------------------------------------
+
+
+class _StubCollection:
+    """Returns rows in a deliberately shuffled order, like Chroma may."""
+
+    def __init__(self, order):
+        self.order = order
+
+    def get(self, where=None):
+        meta = {
+            "citation_id": CITATION_FOR_ORDER,
+            "university": "srm",
+            "university_name": "SRM Institute of Science and Technology",
+            "policy_type": "attendance",
+            "section_path": "Policy > Section",
+            "source_url": "https://example.srmist.edu.in/p",
+        }
+        return {
+            "ids": [f"{CITATION_FOR_ORDER}#{i}" for i in self.order],
+            "documents": [f"piece {i}" for i in self.order],
+            "metadatas": [dict(meta) for _ in self.order],
+        }
+
+
+CITATION_FOR_ORDER = "srm/attendance/4.2-long_section"
+
+
+def _store_with(order):
+    from policyverify.indexing.store import VectorStore
+
+    store = VectorStore(load_config())
+    store._collection = _StubCollection(order)
+    return store
+
+
+def test_get_by_citation_returns_chunks_in_document_order():
+    """Chroma promises nothing about row order, but the verifier scores these
+    as premises in sequence and the eval drift check hashes them joined - both
+    need a stable order."""
+    store = _store_with([3, 0, 2, 1])
+    chunks = store.get_by_citation(CITATION_FOR_ORDER)
+    assert [c.chunk_id for c in chunks] == [
+        f"{CITATION_FOR_ORDER}#{i}" for i in range(4)
+    ]
+
+
+def test_get_by_citation_sorts_numerically_not_lexically():
+    """#10 must come after #9, which string sorting would get wrong."""
+    store = _store_with([10, 2, 1])
+    chunks = store.get_by_citation(CITATION_FOR_ORDER)
+    assert [c.chunk_id.rsplit("#", 1)[1] for c in chunks] == ["1", "2", "10"]
+
+
+def test_get_by_citation_is_stable_across_calls():
+    first = _store_with([2, 0, 1]).get_by_citation(CITATION_FOR_ORDER)
+    second = _store_with([1, 2, 0]).get_by_citation(CITATION_FOR_ORDER)
+    assert [c.chunk_id for c in first] == [c.chunk_id for c in second]

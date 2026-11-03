@@ -143,7 +143,7 @@ Verify the install:
 pytest
 ```
 
-**193 tests** should pass in under a second. They need no GPU, no model and no
+**223 tests** should pass in under a second. They need no GPU, no model and no
 network — deliberately, so the suite runs anywhere.
 
 ---
@@ -230,7 +230,7 @@ src/policyverify/        the core library — no UI, no web framework
 scripts/                 ingest.py, build_index.py, ask.py, validate_evalset.py
 eval/adversarial.jsonl   64 labelled trap questions
 spikes/                  throwaway experiments that de-risked decisions
-tests/                   193 tests, no GPU or network needed
+tests/                   223 tests, no GPU or network needed
 data/manifest.yaml       the corpus recipe (URLs + checksums, not the PDFs)
 config.yaml              every tunable knob in one place
 ```
@@ -366,9 +366,23 @@ labelled in advance: `expected_citations`, `required_values`, and
 appears in a claim the system stood behind, that is a hallucination, and no
 human has to read it to find out.
 
-`python scripts/validate_evalset.py` checks the schema and confirms every
-expected citation resolves against the real index. A set citing sections that
-do not exist would silently corrupt every number computed from it.
+`python scripts/validate_evalset.py` runs four checks, each catching a
+failure the previous one cannot:
+
+| Check | Catches | Coverage |
+|---|---|---|
+| **Schema** | malformed or incoherent labels | all 64 items |
+| **Existence** | a citation pointing at nothing | 24 citations |
+| **Content** | the cited section no longer holds the labelled fact | partial — 15 items by required value, 17 by numeric forbidden value; 27 of 49 cited items not checkable this way |
+| **Drift** | the cited section's *text changed* since the labels were written | all 24 citations |
+
+Existence alone is not enough, and the gap is not theoretical: an ingestion
+change can re-split a document so a citation still resolves while the fact it
+was labelled for has moved into a different section. Drift is the only check
+with full coverage, because it compares against recorded content hashes in
+[`eval/citation_fingerprints.json`](eval/citation_fingerprints.json) rather
+than against a label. After a deliberate ingestion change, re-check the items
+it names, then run `--update-fingerprints` to accept the new state.
 
 ### Tuning versus held-out
 
@@ -410,7 +424,7 @@ lives in [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
 ## Development
 
 ```bash
-pytest                    # 193 tests, no GPU or network
+pytest                    # 223 tests, no GPU or network
 python -m ruff check .    # lint
 python -m ruff check . --fix
 ```

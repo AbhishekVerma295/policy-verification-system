@@ -3,7 +3,7 @@
 Detailed current state of the Policy Verification System. Written as a handoff
 document: it states what exists, what was measured, and what is not built yet.
 
-**Last updated:** after Phase 6 (adversarial set), 2026-09-27.
+**Last updated:** 2026-10-31, after Phase 6 (adversarial set).
 
 For the project overview see [`README.md`](README.md). For the ideas behind
 it see [`CONCEPTS.md`](CONCEPTS.md).
@@ -22,7 +22,7 @@ insufficient.
 |---|---|
 | **Phases complete** | 0, 1, 2, 3, 4, 5, 6 |
 | **Next** | Phase 7 — Streamlit interface |
-| **Tests** | 193 passing, no GPU / model / network required |
+| **Tests** | 223 passing, no GPU / model / network required |
 | **Lint** | ruff clean |
 | **Corpus** | 6 documents, 192 sections, 258 indexed chunks |
 | **Working end-to-end** | question → retrieve → generate → verify → decide → `Answer` |
@@ -73,10 +73,18 @@ Source URLs, access dates, checksums and the reasoning behind each pick are in
 committed** — only the manifest. `python scripts/ingest.py` re-downloads them.
 
 **Scope note:** this began as a 3–4 institution plan. Narrowing to one
-institution was a deliberate decision. The cost was losing "cross-university
-confusion" as the signature adversarial trap; the replacement is
-cross-*regulation* confusion, since SRM publishes several dated,
-programme-specific regulation documents with genuinely different rules.
+institution was a deliberate decision, and it cost the project its intended
+signature adversarial trap — "cross-university confusion", where the same
+question has a different right answer at a different school.
+
+The replacement originally proposed was *cross-regulation* confusion (SRM
+publishes several dated, programme-specific regulation documents). **That is
+not available here either**: only one regulation document is in the corpus,
+the 2021 UG/Integrated PG regulations. What was actually built is
+**`cross_policy`** confusion — the same figure meaning different things in two
+different policies, e.g. `75%` is the minimum attendance rule *and* a
+tuition-waiver tier. See §4.8. Adding a second dated regulation PDF would make
+the original cross-regulation trap possible.
 
 ---
 
@@ -224,9 +232,24 @@ Three independent checks per claim, combined by `verifier.py`.
   at least one, or citation accuracy cannot be scored for it.
 - **`eval/adversarial.jsonl`** — 64 questions. Comments and blank lines are
   skipped by the loader, so the file stays annotated and machine-readable.
-- **`scripts/validate_evalset.py`** — checks the schema, prints the
-  distribution, warns if either half is missing a category, and confirms every
-  expected citation resolves against the live index.
+- **`scripts/validate_evalset.py`** — four checks, not two. Schema (all 64
+  items), existence (24 citations resolve), content (the cited section still
+  holds the labelled fact), and drift (the cited text is unchanged since the
+  labels were written, against `eval/citation_fingerprints.json`). Also prints
+  the distribution and warns if either half is missing a category.
+
+  **Content-check coverage is partial and the script says so**: 15 items are
+  checkable by required value and 17 by numeric forbidden value, leaving 27 of
+  49 cited items not checkable that way. Drift covers all 24 citations,
+  because it needs no label — it compares content hashes.
+
+  A forbidden value appearing in the cited section is a *warning*, not a
+  failure: `num-006` forbids "7 days" precisely because the cited passage
+  contains 7 days in a different role (notice period, not stay length). A
+  figure in the wrong role is a legitimate trap.
+
+  `--update-fingerprints` records the current hashes as the accepted baseline.
+  Only run it after checking the reported items by hand.
 
 | Category | Items | The trap |
 |---|---|---|
@@ -259,9 +282,9 @@ make the original trap possible.
 | `scripts/ingest.py` | manifest → downloaded → extracted → `Document` JSON |
 | `scripts/build_index.py` | processed documents → chunks → embedded index, then a smoke search |
 | `scripts/ask.py` | question → retrieval → claims → verdicts → decision |
-| `scripts/validate_evalset.py` | schema + corpus check on the adversarial set |
+| `scripts/validate_evalset.py` | schema, existence, content and drift checks on the adversarial set |
 
-### 4.10 Tests — 193 total
+### 4.10 Tests — 223 total
 
 | File | Tests | Covers |
 |---|---|---|
@@ -269,8 +292,8 @@ make the original trap possible.
 | `test_verify.py` | 30 | Numeric guard, citation resolution, verdict combination |
 | `test_ingest.py` | 21 | HTML/PDF extraction, heading detection, section splitting |
 | `test_generate.py` | 20 | Prompt building, JSON parsing, retries, fabrication reporting |
-| `test_indexing.py` | 19 | Chunk boundaries, noise filtering, index mismatch guard |
-| `test_evalset.py` | 25 | Label coherence, loading, corpus validation, properties of the real set |
+| `test_indexing.py` | 22 | Chunk boundaries, noise filtering, index mismatch guard, citation chunk ordering |
+| `test_evalset.py` | 52 | Label coherence, loading, corpus/content/drift validation, token-boundary matching |
 | `test_abstain.py` | 19 | Keep/remove logic, abstention triggers, the no-claim-lost invariant |
 | `test_pipeline.py` | 12 | End-to-end wiring, timings, transparent correction |
 | `test_retrieve.py` | 7 | Diversity cap behaviour |
@@ -472,9 +495,12 @@ tuning has nothing honest to optimise against.
 - `data/raw/`, `data/processed/`, `data/index/` and `.venv/` are gitignored.
 - Tests must run without GPU, model download or network.
 
-### Recent commits
+### Commit history
 
 ```
+c3c1741  Phase 6: adversarial question set
+8d6d656  Phase 5: abstention and transparent correction
+01e423c  docs: rewrite README, add CONCEPTS, update status through Phase 4
 286efbc  Phase 4: claim verifier
 ce06d51  feat(generate): add retrieval and structured claim generation
 b92de7a  Phase 2: chunking and vector index
@@ -483,6 +509,24 @@ b92de7a  Phase 2: chunking and vector index
 f0b4fb7  feat(ingest): add policy document ingestion pipeline
 6c67098  Policy Verification System: Phase 0 complete
 ```
+
+Phase 3 has no commit of its own — it was committed as
+`ce06d51 feat(generate)`. Phase 1 is `f0b4fb7`, with two follow-up fixes
+(`5b26865`, `53867ef`) found while building Phase 2.
+
+**Uncommitted at time of writing:**
+
+- The eval-set hardening: `src/policyverify/evalset.py` (content and drift
+  checks), `scripts/validate_evalset.py` (four-stage output),
+  `src/policyverify/indexing/store.py` (deterministic chunk order),
+  `tests/test_evalset.py` and `tests/test_indexing.py`, and the generated
+  baseline `eval/citation_fingerprints.json` — **which must be committed
+  alongside the code**, or the drift check has nothing to compare against and
+  reports "no baseline yet".
+- `scripts/demo.py` — a scripted demo that loads the models once rather than
+  per question.
+- Not part of the system: a generated `policy-verification-system.zip` and a
+  `review/` folder of coursework documents.
 
 ---
 
@@ -495,7 +539,7 @@ pip install torch --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
 ollama pull qwen3:4b
 
-pytest                             # 193 tests
+pytest                             # 223 tests
 python scripts/ingest.py           # 6 documents → 192 sections
 python scripts/build_index.py      # → 258 chunks, then a smoke search
 python scripts/validate_evalset.py # 64 adversarial items, citations resolve

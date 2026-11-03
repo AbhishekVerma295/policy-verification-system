@@ -326,10 +326,19 @@ class VectorStore:
         return int(self.collection.count())
 
     def get_by_citation(self, citation_id: str) -> list[Chunk]:
-        """Every chunk belonging to one citation.
+        """Every chunk belonging to one citation, in document order.
 
         Phase 4 needs this to answer "does this cited section actually exist?"
         - the check that separates a fabricated citation from a misused one.
+
+        The ordering is part of the contract, not incidental. Chroma's get()
+        promises nothing about the order it returns rows in, and two callers
+        depend on that order being stable: the verifier scores the chunks as
+        premises in sequence, and the eval-set drift check hashes them joined
+        together. An order that varied between runs would make a verdict's
+        explanation non-deterministic and would make the drift check report
+        phantom changes. Oversized sections are split into `{citation}#0`,
+        `#1`, `#2`..., so sorting on that suffix restores document order.
         """
         result = self.collection.get(where={"citation_id": citation_id})
         chunks = []
@@ -348,4 +357,14 @@ class VectorStore:
                     source_url=meta["source_url"],
                 )
             )
-        return chunks
+
+        def piece_number(chunk: Chunk) -> tuple[int, str]:
+            """Sort key: the integer after the final '#', then the id itself.
+
+            Falling back to the id keeps the sort total (and stable) if a
+            chunk_id ever lacks the suffix, rather than raising.
+            """
+            _, _, suffix = chunk.chunk_id.rpartition("#")
+            return (int(suffix) if suffix.isdigit() else -1, chunk.chunk_id)
+
+        return sorted(chunks, key=piece_number)
