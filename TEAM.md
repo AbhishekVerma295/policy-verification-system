@@ -2,7 +2,7 @@
 
 How the project is divided between three members: which files each person
 owns, what each person presents in the demo, what each person still has to
-build, and which sections of the paper each person writes.
+build.
 
 The split follows the pipeline, so each person owns one stage end to end and
 the hand-offs between people are the data contracts in `schema.py`:
@@ -12,24 +12,26 @@ the hand-offs between people are the data contracts in `schema.py`:
     │
     ▼
 ┌──────────────────────┐   ┌───────────────────────────┐   ┌──────────────────────────┐
-│ MEMBER 1             │   │ MEMBER 2                  │   │ MEMBER 3                 │
+│ ABHISHEK             │   │ DIYA                      │   │ [YOUR NAME]              │
 │ Data & Retrieval     │──▶│ Generation & Verification │──▶│ Evaluation & Interface   │
 │                      │   │                           │   │                          │
 │ documents → sections │   │ passages → claims         │   │ Answer → screen          │
 │ sections → chunks    │   │ claims → verdicts         │   │ Answer → metrics         │
 │ question → passages  │   │ verdicts → Answer         │   │ adversarial question set │
 └──────────────────────┘   └───────────────────────────┘   └──────────────────────────┘
-   RetrievedChunk[]            Answer                          run logs, UI, paper
+   RetrievedChunk[]            Answer                          run logs, UI       
 ```
 
 ---
 
-## Member 1 — Data & Retrieval
+## Abhishek — Foundations, Data & Retrieval (Phases 0–2)
 
-**Owns: getting the right policy text in front of the model.**
+**Owns: the initial phase — the data contracts, and getting the right policy text in front of the model.**
 
 | Area | Files |
 |---|---|
+| Data contracts (Phase 0) | `src/policyverify/schema.py`, `tests/test_schema.py` |
+| Configuration (Phase 0) | `src/policyverify/config.py`, `config.yaml` |
 | Corpus definition | `data/manifest.yaml` |
 | Ingestion | `src/policyverify/ingest/fetch.py`, `extract.py`, `normalize.py` |
 | Chunking and index | `src/policyverify/indexing/chunk.py`, `store.py` |
@@ -57,12 +59,9 @@ the hand-offs between people are the data contracts in `schema.py`:
 4. **Heading noise** — a few address fragments and contents lines still become sections.
 5. Re-check for a plagiarism policy newer than 2017.
 
-**Paper sections:** III-A Corpus and Ingestion, III-B Indexing and Retrieval,
-and the retrieval rows of the limitations section.
-
 ---
 
-## Member 2 — Generation & Verification
+## Diya — Generation & Verification (Phases 3–5)
 
 **Owns: what the system says, and whether it is allowed to say it.**
 
@@ -101,12 +100,9 @@ and the retrieval rows of the limitations section.
 4. **Apply the LLM timeout** — `llm.timeout_seconds` is in the config but is
    not passed to the Ollama client.
 
-**Paper sections:** III-C Claim Generation, III-D Claim Verification,
-III-E Abstention, and the verification rows of the limitations section.
-
 ---
 
-## Member 3 — Evaluation & Interface
+## [Your name] — Evaluation & Interface (Phases 6–8)
 
 **Owns: proving it works, and showing it.**
 
@@ -118,7 +114,6 @@ III-E Abstention, and the verification rows of the limitations section.
 | Interface | `app.py` |
 | Demo script | `scripts/demo.py` |
 | Tests | `tests/test_evalset.py`, `tests/test_evaluate.py` |
-| Paper | `paper/` |
 
 **Must be able to explain in the demo**
 
@@ -131,20 +126,18 @@ III-E Abstention, and the verification rows of the limitations section.
 **Still to build**
 
 1. **Full held-out run** — `python scripts/evaluate.py --split heldout` and
-   put the numbers in the paper. On a CPU-only laptop this takes over an hour;
+   record the numbers. On a CPU-only laptop this takes over an hour;
    run it on the machine with the GPU if possible.
 2. **Threshold tuning** — sweep `min_claim_score` and `min_retrieval_score`
    over the *tuning* half, pick values, then report on held-out. They are
    currently reasoned defaults, not measured ones.
 3. **Error analysis** — read every failure in the run log and group them by
-   cause. This is the most valuable table in the paper.
+   cause. This is the most valuable result the project has.
 4. **Baseline comparison** — run the same questions with verification off
-   (keep every generated claim) so the paper can show what verification adds.
+   (keep every generated claim) to show what verification adds
+   (`python scripts/evaluate.py --report <log> --baseline`).
 5. **Human-labelled claim precision** — label a sample of kept claims by hand
    as correct/incorrect. The current precision figure is a citation proxy.
-
-**Paper sections:** IV Adversarial Evaluation Set, V Experimental Setup,
-VI Results, and compiles the final document.
 
 ---
 
@@ -152,26 +145,23 @@ VI Results, and compiles the final document.
 
 | File | Why it is shared |
 |---|---|
-| `src/policyverify/schema.py` | The data contracts between the three stages. A change here changes everyone's code. |
-| `src/policyverify/config.py`, `config.yaml` | Every tunable for every stage. |
-| `tests/test_schema.py`, `tests/conftest.py` | Tests and fixtures all three rely on. |
+| `src/policyverify/schema.py` | Abhishek owns it, but it holds the data contracts between the three stages. A change here changes everyone's code, so it is agreed first. |
+| `src/policyverify/config.py`, `config.yaml` | Abhishek owns the file; each person owns the settings for their own stage. |
+| `tests/conftest.py` | Fixtures all three rely on. |
 | `README.md`, `PROJECT_STATUS.md`, `CONCEPTS.md` | Each person updates the parts describing their own stage. |
-
-**Paper sections written together:** Abstract, I Introduction, II Related Work,
-VII Limitations, VIII Conclusion.
 
 ---
 
 ## Working rules
 
-- One branch per task (`m1/hybrid-retrieval`, `m2/relevance-check`, …); merge
+- One branch per task (`abhishek/hybrid-retrieval`, `diya/relevance-check`, …); merge
   through a pull request that another member reads.
 - `pytest` and `python -m ruff check .` must pass before merging. The tests
   need no GPU, model or network, so there is no excuse.
 - A change to `schema.py` or `config.py` is announced to the other two first.
 - Corpus documents, `data/raw/`, `data/processed/`, `data/index/` and `.venv/`
   are never committed.
-- After Member 1 changes ingestion or chunking, Member 3 re-runs
+- After Abhishek changes ingestion or chunking, [Your name] re-runs
   `python scripts/validate_evalset.py` — the drift check reports any cited
   section whose text changed under the labels.
 
@@ -179,10 +169,10 @@ VII Limitations, VIII Conclusion.
 
 | Min | Who | What |
 |---|---|---|
-| 0–1 | Member 3 | The problem: a confident wrong answer about policy, with a citation attached, is worse than no answer. |
-| 1–3 | Member 1 | Corpus, sections, citation IDs, retrieval. Show the "Retrieved passages" panel. |
-| 3–6 | Member 2 | Ask the attendance question live. Open one claim's evidence. Explain the three checks. Then the 90% false-premise question. |
-| 6–8 | Member 3 | Ask the wifi-password question: the system declines. Open the Evaluation tab and walk through the metrics. |
+| 0–1 | [Your name] | The problem: a confident wrong answer about policy, with a citation attached, is worse than no answer. |
+| 1–3 | Abhishek | Corpus, sections, citation IDs, retrieval. Show the "Retrieved passages" panel. |
+| 3–6 | Diya | Ask the attendance question live. Open one claim's evidence. Explain the three checks. Then the 90% false-premise question. |
+| 6–8 | [Your name] | Ask the wifi-password question: the system declines. Open the Evaluation tab and walk through the metrics. |
 | 8–10 | All | Limitations (relevance is not checked; verification is slow) and what each person builds next. |
 
 Start the app **before** the audience arrives — the first question after a

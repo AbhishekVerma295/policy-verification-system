@@ -110,9 +110,16 @@ class LLMConfig(BaseModel):
     backend: str = "ollama"
     model: str = "qwen3:4b"
     temperature: float = 0.0
-    # Hard ceiling so one bad question cannot hang the whole app.
-    timeout_seconds: int = 120
+    # Hard ceiling so one bad question cannot hang the whole app. Generous,
+    # because on a machine with no GPU a normal answer takes over a minute.
+    timeout_seconds: int = 300
     num_ctx: int = 8192
+    # The most tokens the model may write in one reply. A normal answer is a
+    # few hundred. Without a cap, a model in JSON mode can fall into emitting
+    # output forever - measured: one adversarial question ran for 25 minutes
+    # and never returned. A reply cut off here fails to parse, is retried
+    # once, and is then reported as an error, which is the right outcome.
+    max_tokens: int = 800
 
     # Qwen3 is a hybrid reasoning model: it can emit "thinking" tokens before
     # its answer, and Ollama returns those in a SEPARATE field. Combined with

@@ -53,6 +53,8 @@ class OllamaBackend:
             "options": {
                 "temperature": cfg.temperature,
                 "num_ctx": cfg.num_ctx,
+                # A hard ceiling on reply length - see LLMConfig.max_tokens.
+                "num_predict": cfg.max_tokens,
             },
         }
         if json_mode:
@@ -63,7 +65,10 @@ class OllamaBackend:
             kwargs["think"] = False
 
         try:
-            response = ollama.generate(**kwargs)
+            # A client with a timeout, so a request that never finishes is
+            # an error the caller sees rather than a hang.
+            client = ollama.Client(timeout=cfg.timeout_seconds)
+            response = client.generate(**kwargs)
         except Exception as exc:  # connection refused, model not pulled, ...
             raise LLMError(
                 f"could not reach Ollama for model {cfg.model!r}: {exc}\n"
