@@ -15,6 +15,7 @@ clear message naming the bad field instead of a confusing failure later on.
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
 
@@ -25,6 +26,8 @@ from pydantic import BaseModel, Field
 #   <root>/src/policyverify/config.py  ->  <root>
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config.yaml"
+# Environment variable that overrides llm.model - see load_config().
+LLM_MODEL_ENV = "POLICYVERIFY_LLM_MODEL"
 
 
 class PathsConfig(BaseModel):
@@ -124,6 +127,10 @@ class LLMConfig(BaseModel):
     # One retry, then fail loudly - silently accepting malformed output is
     # exactly the kind of quiet wrongness this project exists to prevent.
     max_parse_retries: int = 1
+    # How long Ollama keeps the model in memory after a request. Its default
+    # is 5 minutes, after which the next question pays the full model load
+    # again - a long pause in an interactive session.
+    keep_alive: str = "30m"
 
 
 class NLIConfig(BaseModel):
@@ -205,12 +212,20 @@ def load_config(path: Path | str | None = None) -> Config:
     """
     config_path = Path(path) if path else DEFAULT_CONFIG_PATH
     if not config_path.exists():
-        return Config()
+        config = Config()
+    else:
+        with open(config_path, encoding="utf-8") as f:
+            raw = yaml.safe_load(f) or {}
+        config = Config.model_validate(raw)
 
-    with open(config_path, encoding="utf-8") as f:
-        raw = yaml.safe_load(f) or {}
-
-    return Config.model_validate(raw)
+    # One override from the environment: which language model to run. The
+    # right model depends on the machine (a laptop with no GPU wants a smaller
+    # one), and that should not require editing a committed file.
+    #     set POLICYVERIFY_LLM_MODEL=qwen2.5:3b
+    model = os.environ.get(LLM_MODEL_ENV, "").strip()
+    if model:
+        config.llm.model = model
+    return config
 
 
 @lru_cache(maxsize=1)
