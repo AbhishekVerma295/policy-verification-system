@@ -49,6 +49,7 @@ class OllamaBackend:
         kwargs = {
             "model": cfg.model,
             "prompt": prompt,
+            "keep_alive": cfg.keep_alive,
             "options": {
                 "temperature": cfg.temperature,
                 "num_ctx": cfg.num_ctx,
