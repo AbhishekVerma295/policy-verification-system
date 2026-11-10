@@ -242,3 +242,13 @@ def test_unparseable_model_output_raises_rather_than_guessing():
             llm=FakeLLM(["this is not json"]),
             nli=StubNLI(),
         )
+
+
+def test_on_stage_reports_each_stage_in_order():
+    seen: list[str] = []
+    answer_question(
+        "q", config=load_config(), store=StubStore(),
+        llm=_llm_saying("Students need 75% attendance."), nli=StubNLI(),
+        on_stage=seen.append,
+    )
+    assert seen == ["retrieve", "generate", "verify", "decide"]

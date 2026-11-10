@@ -45,7 +45,10 @@ llm:
   # 0 means the same question gives the same answer every time. Required for
   # debugging and evaluation - not a style choice.
   temperature: 0.0
-  timeout_seconds: 120
+  # Generous: with no GPU a normal answer takes over a minute.
+  timeout_seconds: 300
+  # Cap on reply length, so a runaway generation cannot hang a question.
+  max_tokens: 800
   num_ctx: 8192
 
 nli:

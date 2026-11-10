@@ -7,6 +7,7 @@ Usage:
     python scripts/evaluate.py --sample 10         # 10 items, spread across categories
     python scripts/evaluate.py --category numeric
     python scripts/evaluate.py --ids num-001 fp-003
+    python scripts/evaluate.py --resume eval/results/run-....jsonl   # continue an interrupted run
     python scripts/evaluate.py --report eval/results/run-....jsonl   # re-print a saved run
     python scripts/evaluate.py --report <log> --split heldout       # ... one half of it
     python scripts/evaluate.py --report <log> --baseline            # ... verification off
@@ -31,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from policyverify.config import get_config  # noqa: E402
 from policyverify.evalset import Split, load_evalset, split_items  # noqa: E402
 from policyverify.evaluate import (  # noqa: E402
+    Outcome,
     append_result,
     format_report,
     load_results,
@@ -56,6 +58,9 @@ def main() -> int:
         "--sample", type=int, default=0, help="this many items, spread across categories"
     )
     parser.add_argument("--report", default=None, help="re-print a saved run log and exit")
+    parser.add_argument(
+        "--resume", default=None, help="continue an interrupted run, appending to its log"
+    )
     parser.add_argument(
         "--baseline",
         action="store_true",
@@ -105,14 +110,29 @@ def main() -> int:
     def answer_fn(question: str):
         return answer_question(question, config=config, store=store, llm=llm, nli=nli)
 
-    run_id = new_run_id()
     results_dir = config.paths.resolve("runs")
-    log_path = results_dir / f"{run_id}.jsonl"
+    results = []
+    if args.resume:
+        # Continue an interrupted run: keep what it finished, redo anything
+        # that errored, and append the rest to the same log.
+        log_path = Path(args.resume)
+        run_id = log_path.stem
+        results = [r for r in load_results(log_path) if r.outcome is not Outcome.ERROR]
+        log_path.write_text(
+            "".join(r.model_dump_json() + "\n" for r in results), encoding="utf-8"
+        )
+        done = {r.id for r in results}
+        print(f"resuming {log_path.name}: {len(done)} item(s) already done")
+    else:
+        run_id = new_run_id()
+        log_path = results_dir / f"{run_id}.jsonl"
+        done = set()
     print(f"{len(items)} items -> {log_path}\n")
 
-    results = []
     started = time.perf_counter()
     for n, item in enumerate(items, 1):
+        if item.id in done:
+            continue
         result = run_item(item, answer_fn)
         append_result(log_path, result)
         results.append(result)

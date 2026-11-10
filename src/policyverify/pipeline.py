@@ -17,6 +17,7 @@ pipeline in milliseconds with nothing downloaded.
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 
 from policyverify.abstain import decide
 from policyverify.config import Config, get_config
@@ -46,17 +47,27 @@ def answer_question(
     store=None,
     llm: LLMBackend | None = None,
     nli=None,
+    on_stage: Callable[[str], None] | None = None,
 ) -> Answer:
     """Answer one policy question, with every claim verified.
 
     Returns an `Answer` whether or not the system decided to answer. An
     abstention is a result, not an error: it carries the reason and the claims
     that were considered and rejected.
+
+    `on_stage`, if given, is called with "retrieve", "generate", "verify" and
+    "decide" as each stage starts - so an interface can show where a slow
+    question has got to. It only observes; it cannot change the result.
     """
     config = config or get_config()
     timings = Timings()
 
+    def stage(name: str) -> None:
+        if on_stage is not None:
+            on_stage(name)
+
     # --- 1. retrieve -----------------------------------------------------
+    stage("retrieve")
     watch = _Stopwatch()
     chunks: list[RetrievedChunk] = retrieve(
         question,
@@ -69,16 +80,19 @@ def answer_question(
     timings.retrieve_ms = watch.stop()
 
     # --- 2. generate -----------------------------------------------------
+    stage("generate")
     watch = _Stopwatch()
     draft, fabricated = generate_answer_draft(question, chunks, llm=llm, config=config)
     timings.generate_ms = watch.stop()
 
     # --- 3. verify -------------------------------------------------------
+    stage("verify")
     watch = _Stopwatch()
     verdicts = verify_claims(draft.claims, chunks, nli=nli, store=store, config=config)
     timings.verify_ms = watch.stop()
 
     # --- 4. decide -------------------------------------------------------
+    stage("decide")
     decision = decide(verdicts, retrieved=chunks, config=config)
 
     answer = Answer(

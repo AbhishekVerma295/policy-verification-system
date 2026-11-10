@@ -3,7 +3,7 @@
 Detailed current state of the Policy Verification System. Written as a handoff
 document: it states what exists, what was measured, and what is not built yet.
 
-**Last updated:** 2026-10-31, after Phase 6 (adversarial set).
+**Last updated:** 2026-11-11, after Phases 7 (interface) and 8 (evaluation harness).
 
 For the project overview see [`README.md`](README.md). For the ideas behind
 it see [`CONCEPTS.md`](CONCEPTS.md).
@@ -20,14 +20,15 @@ insufficient.
 
 | | |
 |---|---|
-| **Phases complete** | 0, 1, 2, 3, 4, 5, 6 |
-| **Next** | Phase 7 — Streamlit interface |
-| **Tests** | 223 passing, no GPU / model / network required |
+| **Phases complete** | 0–8 |
+| **Next** | Phase 9 — tuning, relevance check, hardening |
+| **Tests** | 252 passing, no GPU / model / network required |
 | **Lint** | ruff clean |
 | **Corpus** | 6 documents, 192 sections, 258 indexed chunks |
 | **Working end-to-end** | question → retrieve → generate → verify → decide → `Answer` |
 | **Adversarial set** | 64 labelled questions, validated against the corpus |
-| **Not yet working** | UI, evaluation harness (nothing computes the metrics yet) |
+| **Interface** | `streamlit run app.py` |
+| **Evaluation** | `python scripts/evaluate.py`; logs in `eval/results/` |
 
 ---
 
@@ -36,7 +37,7 @@ insufficient.
 | | |
 |---|---|
 | OS | Windows 11 |
-| Python | 3.12 in `.venv/` (3.13+ not supported — PyTorch lags) |
+| Python | 3.12 in `.venv/`; 3.13 also verified (PyTorch 2.15 ships 3.13 wheels) |
 | GPU | RTX 4060 Laptop, 8 GB VRAM |
 | RAM | 16 GB |
 | Generation model | `qwen3:4b` via Ollama (local, GPU) |
@@ -425,16 +426,62 @@ errs toward keeping.
 
 ---
 
-## 7. Not built yet
+## 7. Phases 7 and 8, and what is not built yet
 
-| Phase | Scope |
+### 7.1 Interface — `app.py` (Phase 7)
+
+`streamlit run app.py`. Question box and example buttons; a policy filter and
+a top-k slider; one colour-coded card per claim (supported / refuted /
+unverified) with an "Evidence and checks" expander showing the NLI result,
+the numeric guard and the cited policy text; an abstention banner; a
+removed-claims panel; per-stage timings; the retrieved passages; the raw
+`Answer` as JSON. An **Evaluation** tab reads any run log in `eval/results/`.
+
+Models are loaded once per server process (`st.cache_resource`) and the
+language model is warmed up at start, so the first question does not pay the
+load. Tested headlessly with `streamlit.testing.AppTest`, including a real
+question end to end.
+
+### 7.2 Evaluation harness — `evaluate.py` (Phase 8)
+
+`src/policyverify/evaluate.py` scores an `Answer` against an `EvalItem`
+(pure, no I/O) into one outcome: `correct`, `correct_abstention`,
+`wrong_value`, `wrong_citation`, `incomplete`, `false_abstention`,
+`answered_unanswerable`, or `error`. Only *kept* claims are scored — a
+forbidden value in a removed claim is the verifier working.
+
+`scripts/evaluate.py` runs the set through `pipeline.answer_question()`,
+appending each result (with the full `Answer`) to
+`eval/results/<run-id>.jsonl` as it finishes. `--resume` continues an
+interrupted run; `--report` re-prints a saved one; `--report --baseline`
+re-scores the same generations with verification switched off, which is free
+because removed claims are kept in the `Answer`.
+
+Metrics: accuracy, hallucination rate, citation accuracy, correct and false
+abstention, claims kept/removed, citation precision and recall (proxies by
+citation — not human judgements of truth), latency per stage.
+
+### 7.3 Other additions
+
+- `scripts/demo.py` — five showcase questions, models loaded once.
+- `POLICYVERIFY_LLM_MODEL` environment variable overrides `llm.model`, so a
+  machine with no GPU can run `qwen2.5:3b` without editing `config.yaml`.
+- `llm.keep_alive` (30 min) keeps the model loaded between questions.
+- `llm.timeout_seconds` is now actually applied (it was configured but not
+  passed to the client), and `llm.max_tokens` (800) caps reply length.
+  **Found during evaluation:** one adversarial question made `qwen2.5:3b` in
+  JSON mode generate for 25 minutes without stopping. With the cap it is cut
+  off, fails to parse, is retried once and reported as an error.
+- `TEAM.md` — the split between three people; `STUDY_GUIDE.md` — review prep.
+
+### 7.4 Not built yet (Phase 9)
+
+| Item | Why it matters |
 |---|---|
-| **7** | Streamlit UI — question box, per-claim colour-coded verdicts, expandable evidence, abstention banner, removed-claims panel |
-| **8** | Evaluation harness — claim P/R, citation accuracy, hallucination rate, abstention quality, latency; JSONL run logs |
-| **9** | Hardening, error analysis, demo script |
-
-`Answer` and `Timings` are now populated by `pipeline.answer_question()`.
-Nothing yet writes them to disk — JSONL run logging is Phase 8.
+| Relevance check | See §8 — grounded but off-topic claims pass verification |
+| Threshold tuning on the tuning half | False abstention is the largest error class in the first run |
+| Batched NLI | Verification scores one window at a time |
+| Human labels of claim correctness | Citation precision is only a proxy |
 
 ---
 
@@ -510,23 +557,16 @@ f0b4fb7  feat(ingest): add policy document ingestion pipeline
 6c67098  Policy Verification System: Phase 0 complete
 ```
 
+**Since `461d7a6` (uncommitted):** Phases 7 and 8, the LLM timeout and
+reply cap, the model override, stage progress in the interface, `TEAM.md`
+and `STUDY_GUIDE.md`.
+
 Phase 3 has no commit of its own — it was committed as
 `ce06d51 feat(generate)`. Phase 1 is `f0b4fb7`, with two follow-up fixes
 (`5b26865`, `53867ef`) found while building Phase 2.
 
-**Uncommitted at time of writing:**
-
-- The eval-set hardening: `src/policyverify/evalset.py` (content and drift
-  checks), `scripts/validate_evalset.py` (four-stage output),
-  `src/policyverify/indexing/store.py` (deterministic chunk order),
-  `tests/test_evalset.py` and `tests/test_indexing.py`, and the generated
-  baseline `eval/citation_fingerprints.json` — **which must be committed
-  alongside the code**, or the drift check has nothing to compare against and
-  reports "no baseline yet".
-- `scripts/demo.py` — a scripted demo that loads the models once rather than
-  per question.
-- Not part of the system: a generated `policy-verification-system.zip` and a
-  `review/` folder of coursework documents.
+The eval-set hardening listed as uncommitted in the previous version of this
+file was committed as `461d7a6`.
 
 ---
 
@@ -539,9 +579,11 @@ pip install torch --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
 ollama pull qwen3:4b
 
-pytest                             # 223 tests
+pytest                             # 252 tests
 python scripts/ingest.py           # 6 documents → 192 sections
 python scripts/build_index.py      # → 258 chunks, then a smoke search
 python scripts/validate_evalset.py # 64 adversarial items, citations resolve
 python scripts/ask.py "What is the minimum attendance requirement?"
+streamlit run app.py               # the interface
+python scripts/evaluate.py --split heldout
 ```

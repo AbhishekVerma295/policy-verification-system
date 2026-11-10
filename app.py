@@ -34,7 +34,7 @@ from policyverify.indexing import IndexMismatchError, VectorStore  # noqa: E402
 from policyverify.llm import LLMError, get_llm  # noqa: E402
 from policyverify.pipeline import answer_question  # noqa: E402
 from policyverify.retrieve import retrieve  # noqa: E402
-from policyverify.schema import Answer, ClaimVerdict, PolicyType, VerdictStatus  # noqa: E402
+from policyverify.schema import Answer, ClaimVerdict, VerdictStatus  # noqa: E402
 from policyverify.verify import NLIChecker  # noqa: E402
 
 st.set_page_config(page_title="Policy Verification System", page_icon="✅", layout="wide")
@@ -47,14 +47,13 @@ STYLES = {
     VerdictStatus.NEUTRAL: ("UNVERIFIED", "#d98a00", "rgba(217, 138, 0, 0.10)"),
 }
 
-POLICY_LABELS = {
-    "All policies": None,
-    "Attendance / academic regulations": PolicyType.ATTENDANCE,
-    "Examination": PolicyType.EXAMINATION,
-    "Academic integrity (plagiarism)": PolicyType.ACADEMIC_INTEGRITY,
-    "Scholarship": PolicyType.SCHOLARSHIP,
-    "Hostel / residence": PolicyType.RESIDENCE,
-    "Code of conduct": PolicyType.CODE_OF_CONDUCT,
+# What the page says while each pipeline stage runs.
+STAGE_MESSAGES = {
+    "retrieve": "1/4  Searching the policy documents for relevant passages ...",
+    "generate": "2/4  The language model is writing claims from those passages "
+    "(the slow step: 1-2 minutes without a GPU) ...",
+    "verify": "3/4  Checking every claim against the policy text it cites ...",
+    "decide": "4/4  Keeping verified claims, removing the rest ...",
 }
 
 EXAMPLES = [
@@ -191,7 +190,8 @@ def draw_answer(answer: Answer, passages: list, store: VectorStore) -> None:
     elif answer.claims_kept:
         st.success(
             f"**{len(answer.claims_kept)} verified claim(s).** Every statement below "
-            "was checked against the policy text it cites.",
+            "was checked against the policy text it cites. Confidence runs from "
+            "0.00 to 1.00.",
             icon="✅",
         )
         for i, verdict in enumerate(answer.claims_kept):
@@ -384,26 +384,11 @@ except IndexMismatchError as exc:
 with st.spinner(f"Loading {config.llm.model} into memory ..."):
     llm_problem = warm_up_llm()
 
-with st.sidebar:
-    st.header("Options")
-    policy_label = st.selectbox("Search in", list(POLICY_LABELS))
-    top_k = st.slider("Passages to retrieve", 3, 10, config.retrieval.top_k)
-
-    st.header("System")
-    manifest = store.read_manifest()
-    st.markdown(
-        f"**Corpus** · {manifest.document_count} documents, {manifest.chunk_count} chunks  \n"
-        f"**Language model** · `{config.llm.model}` (local, Ollama)  \n"
-        f"**Embeddings** · `{config.embedding.model_name}`  \n"
-        f"**Fact-checker** · `{config.nli.model_name}`"
+if llm_problem:
+    st.error(
+        f"Language model not reachable:\n\n{llm_problem}\n\n"
+        "Open the Ollama app from the Start menu, then refresh this page."
     )
-    st.caption(
-        f"Keeps a claim only if SUPPORTED with confidence ≥ "
-        f"{config.abstention.min_claim_score}. Declines if the best passage scores "
-        f"below {config.abstention.min_retrieval_score}."
-    )
-    if llm_problem:
-        st.error(f"Language model not reachable:\n\n{llm_problem}")
 
 ask_tab, eval_tab = st.tabs(["Ask a question", "Evaluation"])
 
@@ -431,9 +416,14 @@ with ask_tab:
     to_run = question.strip() if submitted else st.session_state.pop("pending", None)
 
     if to_run:
-        policy = POLICY_LABELS[policy_label]
+        # Search every policy, with the configured number of passages.
+        policy = None
+        top_k = config.retrieval.top_k
         try:
-            with st.spinner("Retrieving passages, generating claims, verifying each one ..."):
+            with st.status("Working on your question ...", expanded=True) as status:
+                def show_stage(name: str) -> None:
+                    status.write(STAGE_MESSAGES[name])
+
                 answer = answer_question(
                     to_run,
                     k=top_k,
@@ -442,16 +432,26 @@ with ask_tab:
                     store=store,
                     llm=llm,
                     nli=nli,
+                    on_stage=show_stage,
                 )
                 # Same call the pipeline made, repeated so the passages can be
                 # shown. Retrieval is deterministic, so these are the same ones.
                 passages = retrieve(
                     to_run, k=top_k, policy_type=policy, config=config, store=store
                 )
+                status.update(
+                    label=f"Done in {answer.timings.total_ms / 1000:.0f} seconds",
+                    state="complete",
+                    expanded=False,
+                )
             st.session_state["result"] = (answer, passages)
         except (LLMError, GenerationError) as exc:
             st.session_state.pop("result", None)
-            st.error(f"Could not produce an answer: {exc}")
+            st.error(
+                f"Could not produce an answer: {exc}\n\n"
+                "If this says Ollama could not be reached, open the Ollama app from "
+                "the Start menu and ask again."
+            )
 
     if "result" in st.session_state:
         draw_answer(*st.session_state["result"], store)

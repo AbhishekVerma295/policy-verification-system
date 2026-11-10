@@ -24,9 +24,9 @@ CLAIM  "Students who miss classes must pay a fine"         NEUTRAL    0.00
 
 Everything runs locally. No API keys, no cloud services, no per-token costs.
 
-**Status:** Phases 0–6 complete. The full pipeline works end-to-end, and a
-64-question adversarial set exists to measure it against. Next is Phase 7
-(the Streamlit interface). See [Roadmap](#roadmap).
+**Status:** Phases 0–8 complete. The full pipeline works end-to-end, with a
+Streamlit interface, a 64-question adversarial set, and an evaluation harness
+that scores the system against it. See [Roadmap](#roadmap).
 
 ---
 
@@ -143,7 +143,7 @@ Verify the install:
 pytest
 ```
 
-**223 tests** should pass in under a second. They need no GPU, no model and no
+**252 tests** should pass in a few seconds. They need no GPU, no model and no
 network — deliberately, so the suite runs anywhere.
 
 ---
@@ -157,9 +157,28 @@ python scripts/ingest.py        # fetch 6 policy documents → 192 sections
 python scripts/build_index.py   # chunk and embed          → 258 chunks
 ```
 
-Ask a question (needs Ollama running):
+Open the web interface (needs Ollama running):
 
 ```bash
+streamlit run app.py
+```
+
+Type any question, or click an example. Each claim is shown with its verdict,
+confidence and the policy text it was checked against; removed claims and
+abstentions are shown too. The **Evaluation** tab displays the latest run of
+the adversarial set.
+
+On a machine with no GPU, pick a smaller model without editing `config.yaml`:
+
+```bash
+set POLICYVERIFY_LLM_MODEL=qwen2.5:3b          # Windows cmd
+$env:POLICYVERIFY_LLM_MODEL = "qwen2.5:3b"     # PowerShell
+```
+
+Or ask from the command line:
+
+```bash
+python scripts/demo.py --pause   # five showcase questions, models loaded once
 python scripts/ask.py "What is the minimum attendance requirement?"
 python scripts/ask.py "Can a parent stay overnight?" --policy residence
 python scripts/ask.py "..." -k 8 --json
@@ -226,11 +245,15 @@ src/policyverify/        the core library — no UI, no web framework
   abstain.py             which claims to keep; whether to answer at all
   pipeline.py            the whole system end to end, in one function
   evalset.py             the adversarial set: schema, loading, validation
+  evaluate.py            scoring a run against the set; metrics; run logs
 
-scripts/                 ingest.py, build_index.py, ask.py, validate_evalset.py
+app.py                   the Streamlit interface
+scripts/                 ingest.py, build_index.py, ask.py, demo.py,
+                         validate_evalset.py, evaluate.py
 eval/adversarial.jsonl   64 labelled trap questions
+eval/results/            JSONL run logs and summaries (not committed)
 spikes/                  throwaway experiments that de-risked decisions
-tests/                   223 tests, no GPU or network needed
+tests/                   252 tests, no GPU or network needed
 data/manifest.yaml       the corpus recipe (URLs + checksums, not the PDFs)
 config.yaml              every tunable knob in one place
 ```
@@ -334,6 +357,19 @@ abstention, and it is not built.
 
 ## Evaluation
 
+```bash
+python scripts/evaluate.py --split heldout      # the half to report on
+python scripts/evaluate.py --sample 10          # a quick spread across categories
+python scripts/evaluate.py --resume <log>       # continue an interrupted run
+python scripts/evaluate.py --report <log>       # re-print a saved run
+python scripts/evaluate.py --report <log> --baseline   # same run, verification off
+```
+
+Each item is appended to `eval/results/<run-id>.jsonl` as it finishes, with
+the full `Answer`, so a surprising score can be read rather than re-run.
+`--baseline` re-scores the same generations as if every claim had been kept,
+which shows what verification changed on identical model output.
+
 Five metrics, no more:
 
 | Metric | Question it answers |
@@ -412,9 +448,9 @@ questions it was tuned for.
 | 4 | **The verifier** — NLI, numeric guards, citation checks | ✅ done |
 | 5 | Abstention and transparent correction | ✅ done |
 | 6 | Adversarial question set | ✅ done |
-| 7 | Streamlit interface | next |
-| 8 | Evaluation harness | |
-| 9 | Hardening, error analysis, demo | |
+| 7 | Streamlit interface | ✅ done |
+| 8 | Evaluation harness | ✅ done |
+| 9 | Hardening, error analysis, demo | partly — LLM timeout and reply cap, demo script, first error analysis |
 
 A phase-by-phase record of what was built, what broke, and what was measured
 lives in [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
@@ -424,7 +460,7 @@ lives in [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
 ## Development
 
 ```bash
-pytest                    # 223 tests, no GPU or network
+pytest                    # 252 tests, no GPU or network
 python -m ruff check .    # lint
 python -m ruff check . --fix
 ```
