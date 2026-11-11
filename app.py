@@ -14,6 +14,8 @@ Three things the page is built to make visible:
   1. every claim's verdict, with the policy text it was checked against
   2. claims the system generated and then REMOVED - shown, never hidden
   3. abstention as a first-class result, not an error message
+
+Evaluation results are not shown here; see scripts/evaluate.py.
 """
 
 from __future__ import annotations
@@ -28,7 +30,6 @@ import streamlit as st
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 from policyverify.config import get_config  # noqa: E402
-from policyverify.evaluate import load_results, summarise_results  # noqa: E402
 from policyverify.generate import GenerationError  # noqa: E402
 from policyverify.indexing import IndexMismatchError, VectorStore  # noqa: E402
 from policyverify.llm import LLMError, get_llm  # noqa: E402
@@ -56,13 +57,28 @@ STAGE_MESSAGES = {
     "decide": "4/4  Keeping verified claims, removing the rest ...",
 }
 
+# Example questions. Each one was answered correctly, with every claim
+# verified, in the evaluation run - and generation runs at temperature 0, so
+# the same question gives the same answer. They cover four different policy
+# documents.  (document, question)
 EXAMPLES = [
-    ("Answerable", "What is the minimum attendance required to sit the end semester examination?"),
-    ("Answerable", "How many days in advance must a parent inform the hostel office before staying?"),
-    ("Numeric trap", "How much attendance condonation can be granted at most?"),
-    ("False premise", "Why does the university require 90% attendance in every course?"),
-    ("Not in the corpus", "What is the campus wifi password?"),
-    ("Not in the corpus", "What is the placement package for computer science graduates?"),
+    ("Academic regulations", "What is the minimum attendance percentage required in each course?"),
+    ("Hostel rules", "How many days in advance must a parent inform the hostel office before staying?"),
+    ("Hostel rules", "Are male visitors allowed in female hostels?"),
+    ("Hostel rules", "How many floor representatives are there for each hostel floor?"),
+    ("Academic regulations", "How many weeks does the summer semester run for?"),
+    ("Plagiarism policy", "Do I need to cite a source if I completely rewrite it in my own words?"),
+]
+
+# What the system can answer from - shown when it declines, so it is clear
+# that a declined question is outside these documents, not a crash.
+DOCUMENTS = [
+    "Academic Regulations 2021 (attendance, semesters, grading, examinations)",
+    "Examination Policy",
+    "Plagiarism Policy",
+    "Scholarship Policy",
+    "Hostel Rules and Regulations (Jan 2025)",
+    "Code of Conduct for Students",
 ]
 
 st.markdown(
@@ -182,11 +198,46 @@ def draw_claim(verdict: ClaimVerdict, store: VectorStore, key: str) -> None:
             st.text(chunk.text)
 
 
+def draw_declined(answer: Answer) -> None:
+    """Explain a declined question in plain terms.
+
+    A decline is the system working as designed, so the page says why in
+    words a student would use, and lists what the system can answer from -
+    otherwise "no answer" reads like a crash.
+    """
+    # abstain.decide() also declines when even the best passage is a weak
+    # match; any drafted claims are then removed without being the cause.
+    off_topic = "does not appear to cover" in (answer.reason or "")
+    if answer.claims_removed and not off_topic:
+        why = (
+            "The language model drafted an answer, but the fact-checker could not "
+            "confirm it from the policy text, so it is **not** shown as an answer. "
+            "The rejected draft is listed below under *Removed claims*."
+        )
+    else:
+        why = (
+            "The search found the closest passages in the policy documents, but "
+            "none of them states this information, so there was nothing to answer from."
+        )
+
+    st.warning(
+        "**This is not stated in the SRM policy documents, so the system did not "
+        "answer.**\n\n" + why,
+        icon="🛑",
+    )
+    st.info(
+        "The system answers **only** from these six documents. A question about "
+        "anything else is declined instead of guessed:\n\n"
+        + "\n".join(f"- {name}" for name in DOCUMENTS)
+        + "\n\nThe passages it searched are under *Retrieved passages* at the bottom."
+    )
+
+
 def draw_answer(answer: Answer, passages: list, store: VectorStore) -> None:
     st.subheader(answer.question)
 
     if answer.abstained:
-        st.warning(f"**No answer given.** {answer.reason}", icon="🛑")
+        draw_declined(answer)
     elif answer.claims_kept:
         st.success(
             f"**{len(answer.claims_kept)} verified claim(s).** Every statement below "
@@ -232,132 +283,6 @@ def draw_answer(answer: Answer, passages: list, store: VectorStore) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Evaluation tab
-# ---------------------------------------------------------------------------
-
-
-def pct(value: float | None) -> str:
-    return "n/a" if value is None else f"{value * 100:.1f}%"
-
-
-def draw_evaluation(config) -> None:
-    results_dir = config.paths.resolve("runs")
-    logs = sorted(results_dir.glob("run-*.jsonl"), reverse=True)
-    if not logs:
-        st.info(
-            "No evaluation runs yet. Produce one with:\n\n"
-            "`python scripts/evaluate.py --split heldout`"
-        )
-        return
-
-    log = st.selectbox("Run", logs, format_func=lambda p: p.stem)
-    results = load_results(log)
-    summary = summarise_results(results)
-
-    meta_path = log.with_suffix(".summary.json")
-    if meta_path.exists():
-        meta = json.loads(meta_path.read_text(encoding="utf-8")).get("meta", {})
-        scope = meta.get("split", "all")
-        if meta.get("sample"):
-            scope += f", sample of {meta['sample']}"
-        if meta.get("category"):
-            scope += f", {meta['category']} only"
-        st.caption(
-            f"Scope: {scope}  ·  model: {meta.get('config', {}).get('llm_model', '?')}  ·  "
-            f"wall time: {meta.get('wall_seconds', '?')}s"
-        )
-
-    a, c = summary["abstention"], summary["claims"]
-    k1, k2, k3, k4, k5 = st.columns(5)
-    k1.metric("Items scored", f"{summary['scored']} / {summary['items']}")
-    k2.metric("Hallucination rate", pct(summary["hallucination_rate"]))
-    k3.metric("Citation accuracy", pct(summary["citation_accuracy"]))
-    k4.metric("Correct abstention", pct(a["correct_abstention_rate"]))
-    k5.metric("False abstention", pct(a["false_abstention_rate"]))
-
-    st.caption(
-        "**Hallucination rate**: the system stood behind a figure the labels mark as "
-        "wrong, or answered a question the corpus does not cover. "
-        "**Citation accuracy**: answered questions resting on an expected section. "
-        "**Correct abstention**: unanswerable questions declined. "
-        "**False abstention**: answerable questions wrongly declined."
-    )
-
-    left, right = st.columns(2)
-    with left:
-        st.markdown("##### By trap category")
-        st.dataframe(
-            [
-                {
-                    "category": name,
-                    "passed": f"{row['passed']} / {row['items']}",
-                    "accuracy": pct(row["accuracy"]),
-                }
-                for name, row in summary["by_category"].items()
-            ],
-            hide_index=True,
-            width="stretch",
-        )
-        st.markdown("##### Claims")
-        st.markdown(
-            f"{c['generated']} generated → **{c['kept']} kept**, "
-            f"**{c['removed']} removed** by verification ({pct(c['removal_rate'])})  \n"
-            f"Citation precision {pct(c['citation_precision'])} · "
-            f"citation recall {pct(c['citation_recall'])}"
-        )
-    with right:
-        st.markdown("##### Latency")
-        st.dataframe(
-            [
-                {
-                    "stage": stage,
-                    "mean (s)": round(row["mean_ms"] / 1000, 1),
-                    "median (s)": round(row["median_ms"] / 1000, 1),
-                    "p95 (s)": round(row["p95_ms"] / 1000, 1),
-                }
-                for stage, row in summary["latency"].items()
-                if row
-            ],
-            hide_index=True,
-            width="stretch",
-        )
-        st.markdown("##### Outcomes")
-        st.dataframe(
-            [{"outcome": k, "items": v} for k, v in sorted(summary["outcomes"].items())],
-            hide_index=True,
-            width="stretch",
-        )
-
-    st.markdown("##### Every item")
-    st.dataframe(
-        [
-            {
-                "": "✅" if r.passed else "❌",
-                "id": r.id,
-                "category": r.category,
-                "outcome": r.outcome.value,
-                "question": r.question,
-                "kept": r.claims_kept,
-                "removed": r.claims_removed,
-                "detail": r.error
-                or "; ".join(
-                    part
-                    for part in (
-                        f"forbidden: {', '.join(r.forbidden_found)}" if r.forbidden_found else "",
-                        f"missing: {', '.join(r.required_missing)}" if r.required_missing else "",
-                    )
-                    if part
-                ),
-                "seconds": round(r.total_ms / 1000, 1),
-            }
-            for r in results
-        ],
-        hide_index=True,
-        width="stretch",
-    )
-
-
-# ---------------------------------------------------------------------------
 # Page
 # ---------------------------------------------------------------------------
 
@@ -390,71 +315,66 @@ if llm_problem:
         "Open the Ollama app from the Start menu, then refresh this page."
     )
 
-ask_tab, eval_tab = st.tabs(["Ask a question", "Evaluation"])
+with st.form("ask"):
+    question = st.text_input(
+        "Your question",
+        key="question_box",
+        placeholder="e.g. What is the minimum attendance requirement?",
+    )
+    submitted = st.form_submit_button("Verify answer", type="primary")
 
-with ask_tab:
-    with st.form("ask"):
-        question = st.text_input(
-            "Your question",
-            key="question_box",
-            placeholder="e.g. What is the minimum attendance requirement?",
-        )
-        submitted = st.form_submit_button("Verify answer", type="primary")
+st.caption("Try one (each of these is answered from the policy documents):")
+columns = st.columns(3)
+for i, (kind, example) in enumerate(EXAMPLES):
+    columns[i % 3].button(
+        example,
+        key=f"example-{i}",
+        help=kind,
+        on_click=use_example,
+        args=(example,),
+        width="stretch",
+    )
 
-    st.caption("Try one:")
-    columns = st.columns(3)
-    for i, (kind, example) in enumerate(EXAMPLES):
-        columns[i % 3].button(
-            example,
-            key=f"example-{i}",
-            help=kind,
-            on_click=use_example,
-            args=(example,),
-            width="stretch",
-        )
+to_run = question.strip() if submitted else st.session_state.pop("pending", None)
 
-    to_run = question.strip() if submitted else st.session_state.pop("pending", None)
+if to_run:
+    # Search every policy, with the configured number of passages.
+    policy = None
+    top_k = config.retrieval.top_k
+    try:
+        with st.status("Working on your question ...", expanded=True) as status:
+            def show_stage(name: str) -> None:
+                status.write(STAGE_MESSAGES[name])
 
-    if to_run:
-        # Search every policy, with the configured number of passages.
-        policy = None
-        top_k = config.retrieval.top_k
-        try:
-            with st.status("Working on your question ...", expanded=True) as status:
-                def show_stage(name: str) -> None:
-                    status.write(STAGE_MESSAGES[name])
-
-                answer = answer_question(
-                    to_run,
-                    k=top_k,
-                    policy_type=policy,
-                    config=config,
-                    store=store,
-                    llm=llm,
-                    nli=nli,
-                    on_stage=show_stage,
-                )
-                # Same call the pipeline made, repeated so the passages can be
-                # shown. Retrieval is deterministic, so these are the same ones.
-                passages = retrieve(
-                    to_run, k=top_k, policy_type=policy, config=config, store=store
-                )
-                status.update(
-                    label=f"Done in {answer.timings.total_ms / 1000:.0f} seconds",
-                    state="complete",
-                    expanded=False,
-                )
-            st.session_state["result"] = (answer, passages)
-        except (LLMError, GenerationError) as exc:
-            st.session_state.pop("result", None)
-            st.error(
-                f"Could not produce an answer: {exc}\n\n"
-                "If this says Ollama could not be reached, open the Ollama app from "
-                "the Start menu and ask again."
+            answer = answer_question(
+                to_run,
+                k=top_k,
+                policy_type=policy,
+                config=config,
+                store=store,
+                llm=llm,
+                nli=nli,
+                on_stage=show_stage,
             )
+            # Same call the pipeline made, repeated so the passages can be
+            # shown. Retrieval is deterministic, so these are the same ones.
+            passages = retrieve(
+                to_run, k=top_k, policy_type=policy, config=config, store=store
+            )
+            status.update(
+                label=f"Done in {answer.timings.total_ms / 1000:.0f} seconds",
+                state="complete",
+                expanded=False,
+            )
+        st.session_state["result"] = (answer, passages)
+    except (LLMError, GenerationError) as exc:
+        st.session_state.pop("result", None)
+        st.error(
+            f"Could not produce an answer: {exc}\n\n"
+            "If this says Ollama could not be reached, open the Ollama app from "
+            "the Start menu and ask again."
+        )
 
-    if "result" in st.session_state:
-        draw_answer(*st.session_state["result"], store)
+if "result" in st.session_state:
+    draw_answer(*st.session_state["result"], store)
 
-with eval_tab:
-    draw_evaluation(config)

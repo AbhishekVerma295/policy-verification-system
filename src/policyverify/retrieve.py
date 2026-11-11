@@ -59,10 +59,9 @@ def diversify(
     # Re-rank so `rank` reflects the final order the caller sees, not the
     # order the store happened to return.
     final = sorted(kept, key=lambda r: -r.score)[:k]
-    return [
-        RetrievedChunk(chunk=r.chunk, score=r.score, rank=i)
-        for i, r in enumerate(final)
-    ]
+    # model_copy rather than a fresh RetrievedChunk(...): it changes only the
+    # rank and does not re-validate the chunk, which is already valid.
+    return [r.model_copy(update={"rank": i}) for i, r in enumerate(final)]
 
 
 def retrieve(

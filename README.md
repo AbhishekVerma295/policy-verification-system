@@ -165,8 +165,8 @@ streamlit run app.py
 
 Type any question, or click an example. Each claim is shown with its verdict,
 confidence and the policy text it was checked against; removed claims and
-abstentions are shown too. The **Evaluation** tab displays the latest run of
-the adversarial set.
+abstentions are shown too. Evaluation results are printed by
+`scripts/evaluate.py` (see [Evaluation](#evaluation)).
 
 On a machine with no GPU, pick a smaller model without editing `config.yaml`:
 

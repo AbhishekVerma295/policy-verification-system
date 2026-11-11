@@ -472,7 +472,7 @@ citation — not human judgements of truth), latency per stage.
   **Found during evaluation:** one adversarial question made `qwen2.5:3b` in
   JSON mode generate for 25 minutes without stopping. With the cap it is cut
   off, fails to parse, is retried once and reported as an error.
-- `TEAM.md` — the split between three people; `STUDY_GUIDE.md` — review prep.
+- `STUDY_GUIDE.md` — review preparation.
 
 ### 7.4 Not built yet (Phase 9)
 
@@ -558,8 +558,8 @@ f0b4fb7  feat(ingest): add policy document ingestion pipeline
 ```
 
 **Since `461d7a6` (uncommitted):** Phases 7 and 8, the LLM timeout and
-reply cap, the model override, stage progress in the interface, `TEAM.md`
-and `STUDY_GUIDE.md`.
+reply cap, the model override, stage progress in the interface, and
+`STUDY_GUIDE.md`.
 
 Phase 3 has no commit of its own — it was committed as
 `ce06d51 feat(generate)`. Phase 1 is `f0b4fb7`, with two follow-up fixes
