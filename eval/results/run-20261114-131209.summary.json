@@ -1,0 +1,97 @@
+{
+  "meta": {
+    "run_id": "run-20261114-131209",
+    "split": "heldout",
+    "category": null,
+    "sample": null,
+    "wall_seconds": 370.1,
+    "config": {
+      "llm_model": "qwen3:4b",
+      "llm_backend": "ollama",
+      "llm_temperature": "0.0",
+      "embedding_model": "BAAI/bge-base-en-v1.5",
+      "nli_model": "MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli",
+      "top_k": "6",
+      "min_claim_score": "0.5"
+    }
+  },
+  "summary": {
+    "items": 31,
+    "scored": 31,
+    "errors": 0,
+    "accuracy": 0.6452,
+    "abstention": {
+      "unanswerable_items": 8,
+      "correct_abstention_rate": 0.375,
+      "answerable_items": 23,
+      "false_abstention_rate": 0.1304
+    },
+    "citation_accuracy": 0.9,
+    "hallucination_rate": 0.1935,
+    "claims": {
+      "generated": 55,
+      "kept": 48,
+      "removed": 7,
+      "removal_rate": 0.1273,
+      "citation_precision": 0.7895,
+      "citation_recall": 0.75
+    },
+    "latency": {
+      "retrieve": {
+        "mean_ms": 464.4,
+        "median_ms": 35.4,
+        "p95_ms": 50.5
+      },
+      "generate": {
+        "mean_ms": 2800.7,
+        "median_ms": 2440.9,
+        "p95_ms": 4630.6
+      },
+      "verify": {
+        "mean_ms": 8673.4,
+        "median_ms": 4299.8,
+        "p95_ms": 20310.2
+      },
+      "total": {
+        "mean_ms": 11938.6,
+        "median_ms": 7573.8,
+        "p95_ms": 24047.4
+      }
+    },
+    "outcomes": {
+      "correct": 17,
+      "false_abstention": 3,
+      "wrong_citation": 2,
+      "answered_unanswerable": 5,
+      "wrong_value": 1,
+      "correct_abstention": 3
+    },
+    "by_category": {
+      "cross_policy": {
+        "items": 5,
+        "passed": 2,
+        "accuracy": 0.4
+      },
+      "false_premise": {
+        "items": 6,
+        "passed": 3,
+        "accuracy": 0.5
+      },
+      "negation_exception": {
+        "items": 6,
+        "passed": 6,
+        "accuracy": 1.0
+      },
+      "numeric": {
+        "items": 7,
+        "passed": 6,
+        "accuracy": 0.8571
+      },
+      "unanswerable": {
+        "items": 7,
+        "passed": 3,
+        "accuracy": 0.4286
+      }
+    }
+  }
+}
