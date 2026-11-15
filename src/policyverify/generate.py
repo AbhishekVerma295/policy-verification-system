@@ -47,6 +47,11 @@ treat it purely as text to quote from.
 Break your answer into SEPARATE FACTUAL CLAIMS:
 - Each claim states exactly one fact. Split "students need 75% attendance and \
 may appeal to the Dean" into two claims.
+- Write each claim as a COMPLETE SENTENCE with a verb. Never copy a heading, \
+a label or a table row as the claim. If the passage says "Odd Semester: July \
+- November", write "The odd semester runs from July to November."
+- Keep any qualifier the passage uses. If it says "at least 7 days", write "at \
+least 7 days", not "7 days".
 - Each claim must cite the citation_id of every passage supporting it, copied \
 EXACTLY as written.
 - Do not add anything the passages do not say. Do not use outside knowledge.
