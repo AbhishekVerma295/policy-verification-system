@@ -67,6 +67,48 @@ def test_noise_section_keeps_short_but_real_rules():
     assert not is_noise_section(section)
 
 
+def test_noise_section_drops_short_titles_with_nothing_under_them():
+    """Real case: the examination policy's part title, left as the whole body
+    of a section once its sub-headings were detected."""
+    assert is_noise_section(
+        Section(heading="Section B", text="EXAMINATIONS – RULES AND REGULATIONS")
+    )
+
+
+def test_noise_section_drops_unfinished_fragments():
+    """Real cases from the hostel rules' cover page and the regulations."""
+    assert is_noise_section(
+        Section(heading="Srmist", text="Hostels,\nSRM Nagar, Kattankulathur – 603")
+    )
+    assert is_noise_section(
+        Section(
+            heading="Rules And Regulations",
+            text="(updated Jan 2025)\nFor Further Details Contact:\nManager,",
+        )
+    )
+    assert is_noise_section(Section(heading="Matrix", text="And, every course has well defined:"))
+
+
+def test_noise_section_keeps_short_real_rules_and_contacts():
+    """The new short-section rules must not catch a real one-line rule, a
+    contact block, or anything long - when in doubt, keep."""
+    keep = [
+        "The Chief Guest will deliver the Convocation address.",
+        "warden.esqa.ktr@srmist.edu.in\n8056016636\n17",
+        "Ragging is banned: any student found guilty will be expelled.",
+    ]
+    assert not is_noise_section(Section(heading="Convocation", text=keep[0]))
+    assert not is_noise_section(Section(heading="Esq A", text=keep[1]))
+    assert not is_noise_section(Section(heading="Ragging", text=keep[2]))
+    # Anything of 60 characters or more is judged by word count alone.
+    long_fragment = "The following rules apply to every student in every SRM hostel,"
+    assert len(long_fragment) >= 60
+    assert not is_noise_section(Section(heading="Hostel", text=long_fragment))
+    # A long ALL CAPS body is a real (shouted) rule, not a title.
+    shouted = "SMOKING AND ALCOHOL ARE STRICTLY PROHIBITED INSIDE THE HOSTEL PREMISES"
+    assert not is_noise_section(Section(heading="Prohibited", text=shouted))
+
+
 # ---------------------------------------------------------------------------
 # split_long_text
 # ---------------------------------------------------------------------------

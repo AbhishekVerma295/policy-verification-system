@@ -114,9 +114,9 @@
       "fp-009"
     ]
   },
-  "srm/examination/detention_cancellation_of_candidature_fo": {
-    "chars": 46202,
-    "sha256": "0b3620bdcbb82186d0b2ae5d5fa5f391f6a679c846f4de78ad743c0ec2bf2a63",
+  "srm/examination/XVII-result_passing_board_meeting": {
+    "chars": 1171,
+    "sha256": "24f60a9877fd3973dbf137c5061782860bed8a905c944aeecac31f15473e3c20",
     "used_by": [
       "fp-010"
     ]
@@ -185,9 +185,87 @@
       "neg-006"
     ]
   },
+  "srm/scholarship/1-based_on_cuet_pg_common_university_entra": {
+    "chars": 953,
+    "sha256": "ebb49aaba807fbf27a740cf72da307d5fe03998fe719c18f868f14fae364b5c4",
+    "used_by": [
+      "num-016",
+      "xpol-001",
+      "xpol-005"
+    ]
+  },
+  "srm/scholarship/14-faculty_of_medicine_and_health_sciences": {
+    "chars": 2746,
+    "sha256": "231c6aaa8905064944dba4dbb8da4331465a7b858c36b5b9c39b117146486db8",
+    "used_by": [
+      "num-016",
+      "xpol-005"
+    ]
+  },
+  "srm/scholarship/15-faculty_of_management": {
+    "chars": 1107,
+    "sha256": "4ec6820f1c5acf2dc4dfc06c04e6253a07c0ea069ebb26e3fc342ca8c1c25cc1",
+    "used_by": [
+      "num-016",
+      "xpol-005"
+    ]
+  },
   "srm/scholarship/16-school_of_law": {
-    "chars": 420,
-    "sha256": "d1983171d263732520b8b3faa3975e17195531e2d0ed339e5e7b8feb187e6338",
+    "chars": 1067,
+    "sha256": "c42643bcd416ff3346f1560b8b12186aa76a9d5c20f3043c919a3f3a2dea6474",
+    "used_by": [
+      "num-016",
+      "xpol-001",
+      "xpol-005"
+    ]
+  },
+  "srm/scholarship/17-faculty_of_science_and_humanities": {
+    "chars": 1059,
+    "sha256": "0c460fc2ca67b32b18d2935732f9c3243b8f5c7bd38e5dc110592b2d7761f4a8",
+    "used_by": [
+      "num-016",
+      "xpol-001",
+      "xpol-005"
+    ]
+  },
+  "srm/scholarship/2-clat_score": {
+    "chars": 544,
+    "sha256": "7b2ebe239a19aa23631dea8136f4a39345ccafe7dfbbb5a443432757471e22a2",
+    "used_by": [
+      "num-016",
+      "xpol-001",
+      "xpol-005"
+    ]
+  },
+  "srm/scholarship/3-mat_score": {
+    "chars": 250,
+    "sha256": "30f0eaedd485d677d713f5e1eb7a0be4a549ba4199eca2a94939f5dc1127e113",
+    "used_by": [
+      "num-016",
+      "xpol-005"
+    ]
+  },
+  "srm/scholarship/3-sat_score": {
+    "chars": 548,
+    "sha256": "ab878dd5f888086cd28b392489ef6ee4734602a8770ae1cc7fe96d5635a88eb4",
+    "used_by": [
+      "num-016",
+      "xpol-001",
+      "xpol-005"
+    ]
+  },
+  "srm/scholarship/4-diversity_scholarships": {
+    "chars": 2197,
+    "sha256": "24c7cbfa7062dc3d37407b80b7ef55e6b382ceeb2381b2521345f47ee1418dc0",
+    "used_by": [
+      "num-016",
+      "xpol-001",
+      "xpol-005"
+    ]
+  },
+  "srm/scholarship/4-nmat_score": {
+    "chars": 2447,
+    "sha256": "5aa8163cd65b5b32b44221685bb45083b8cec7c8adb53366878f1469f3d2eb98",
     "used_by": [
       "num-016",
       "xpol-001",

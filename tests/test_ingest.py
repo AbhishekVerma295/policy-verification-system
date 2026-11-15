@@ -11,9 +11,16 @@ each fix exists).
 
 from __future__ import annotations
 
-from policyverify.ingest.extract import _strip_repeated_lines, extract_html
+from policyverify.ingest.extract import (
+    TABLE_CELL_SEPARATOR,
+    _strip_repeated_lines,
+    extract_html,
+)
 from policyverify.ingest.normalize import (
+    _is_numbered_heading,
+    _is_roman_heading,
     build_document,
+    join_lone_roman_numerals,
     promote_inline_headings,
     split_into_sections,
 )
@@ -93,6 +100,152 @@ def test_extract_html_falls_back_to_body_when_no_main():
     html = "<html><body><p>No main tag here, just body text.</p></body></html>"
     text = extract_html(html.encode())
     assert "No main tag here" in text
+
+
+# ---------------------------------------------------------------------------
+# extract_html: footer call-to-action, superscripts, tables
+# ---------------------------------------------------------------------------
+
+# The shape of SRM's end-of-page block, copied from the real pages.
+_CTA_SECTION = """
+<section class="elementor-section elementor-top-section">
+  <section class="elementor-section elementor-inner-section">
+    <h2 class="elementor-heading-title">Where could your journey at SRMIST take you?</h2>
+    <a href="/policies/hostel-policy/">Hostel Policy</a>
+    <a href="/policies/">Policies</a>
+    <a href="/policies/internal-complaints-committee/">Internal Complaints Committee</a>
+  </section>
+</section>
+"""
+
+
+def test_extract_html_strips_footer_call_to_action():
+    """Real leak: the code of conduct's appeal process used to end with
+    "... Hostel Policy / Policies / Internal Complaints Committee"."""
+    html = f"""<html><body><main>
+      <section><p>The decision of the Appellate Committee is final.</p></section>
+      {_CTA_SECTION}
+    </main></body></html>"""
+    text = extract_html(html.encode())
+    assert "The decision of the Appellate Committee is final." in text
+    for leaked in ("Where could your journey", "Hostel Policy", "Policies", "Internal Complaints"):
+        assert leaked not in text
+
+
+def test_extract_html_keeps_a_cta_section_that_also_holds_real_text():
+    """Never take real content with the footer: if the section holding the
+    prompt contains anything except the prompt and links, leave it alone."""
+    html = """<html><body><main><section>
+      <h2>Where could your journey at SRMIST take you?</h2>
+      <p>Hostel fees are payable before the start of each semester.</p>
+    </section></main></body></html>"""
+    text = extract_html(html.encode())
+    assert "Hostel fees are payable before the start of each semester." in text
+
+
+def test_extract_html_joins_superscripts_to_their_word():
+    html = "<html><body><main><p>95<sup>th</sup> Percentile and above</p></main></body></html>"
+    assert extract_html(html.encode()) == "95th Percentile and above"
+
+
+# Modelled on SRM's scholarship page: a title in bold, then a table whose
+# first column is a serial number, then the next table's title.
+_SCORE_TABLES = """<html><body><main>
+  <p><strong>b). Applicable for BBA (Only for KTR campus)</strong></p>
+  <ol><li><strong>Based on Common University Entrance Test (CUET) scores</strong></li></ol>
+  <table><tbody>
+    <tr><td>S. No.</td><td>Percentile</td><td>Scholarship Name</td><td>Benefit</td></tr>
+    <tr><td>1.</td><td>95 Percentile and Above</td><td>Merit Scholarship 100%</td><td>100% Tuition Fee Waiver</td></tr>
+    <tr><td>2.</td><td>90 to 94.99 Percentile</td><td>Merit Scholarship 75%</td><td>75% Tuition Fee Waiver</td></tr>
+  </tbody></table>
+  <p><strong>2. CLAT SCORE</strong></p>
+  <table><tbody>
+    <tr><td>S. No.</td><td>Rank</td><td>Scholarship Name</td><td>Benefit</td></tr>
+    <tr><td>1.</td><td>TOP 2500</td><td>Merit Scholarship 100%</td><td>100% Tuition Fee Waiver</td></tr>
+  </tbody></table>
+</main></body></html>"""
+
+
+def test_extract_html_writes_each_table_row_as_one_self_contained_line():
+    lines = extract_html(_SCORE_TABLES.encode()).splitlines()
+    assert (
+        "Applicable for BBA (Only for KTR campus) - Based on Common University Entrance "
+        "Test (CUET) scores | Percentile: 90 to 94.99 Percentile | Scholarship Name: "
+        "Merit Scholarship 75% | Benefit: 75% Tuition Fee Waiver."
+    ) in lines
+    # The serial-number column is dropped and the next table gets its own title,
+    # not the previous table's.
+    assert (
+        "CLAT SCORE | Rank: TOP 2500 | Scholarship Name: Merit Scholarship 100% | "
+        "Benefit: 100% Tuition Fee Waiver."
+    ) in lines
+    assert not any(line in {"1.", "2.", "S. No.", "Benefit"} for line in lines)
+
+
+def test_table_rows_stay_in_the_section_that_introduces_them_and_are_never_headings():
+    """The real failure: "95 Percentile and above" became heading number 95,
+    leaving sections whose whole text was "Merit Scholarship 75% ..."."""
+    text = "2. Faculty Of Management\nIntroduction to the scholarships.\n" + extract_html(
+        _SCORE_TABLES.encode()
+    )
+    sections = split_into_sections(text, "Scholarship Policy")
+    by_key = {s.section_key(): s for s in sections}
+    # "2. CLAT SCORE" is a real heading and keeps its table rows.
+    assert "2-clat_score" in by_key
+    assert "TOP 2500" in by_key["2-clat_score"].text
+    # The CUET rows stay under the heading above them; no band became a heading.
+    assert "90 to 94.99 Percentile" in by_key["2-faculty_of_management"].text
+    assert not any("percentile" in key for key in by_key)
+
+
+def test_extract_html_leaves_tables_with_merged_cells_as_they_were():
+    """The code of conduct's consequence cell spans several misconduct rows;
+    guessing which row it belongs to is not safe, so the table is left flat."""
+    html = """<html><body><main><table>
+      <tr><td>MISCONDUCT</td><td>CONSEQUENCE</td></tr>
+      <tr><td>1. Misuse of ID cards.</td><td rowspan="2">Five days academic suspension</td></tr>
+      <tr><td>2. Any complaint of misconduct.</td></tr>
+    </table></main></body></html>"""
+    text = extract_html(html.encode())
+    assert TABLE_CELL_SEPARATOR not in text
+    assert text.splitlines() == [
+        "MISCONDUCT",
+        "CONSEQUENCE",
+        "1. Misuse of ID cards.",
+        "Five days academic suspension",
+        "2. Any complaint of misconduct.",
+    ]
+
+
+def test_extract_html_leaves_tables_without_a_clear_header_as_they_were():
+    """A two-column list with no header row (the examination policy's robe
+    colours) has no column names to attach to each value."""
+    html = """<html><body><main><table>
+      <tr><td>The Chancellor</td><td>Velvet (Blue with gold border)</td></tr>
+      <tr><td>The Registrar</td><td>Velvet (Maroon)</td></tr>
+    </table></main></body></html>"""
+    text = extract_html(html.encode())
+    assert TABLE_CELL_SEPARATOR not in text
+    assert "The Chancellor\nVelvet (Blue with gold border)" in text
+
+
+def test_extract_html_table_with_th_header_and_generic_label_above():
+    """A <th> header row counts as a header even without a serial column, and
+    a generic bold label ("Conditions:") is not used as the table's title."""
+    html = """<html><body><main>
+      <p><strong>6. Differently-Abled Scholarship</strong></p>
+      <p><strong>Conditions:</strong></p>
+      <p>Must apply every year within the stipulated date</p>
+      <table>
+        <tr><th>Sub Category</th><th>Conditions for renewal</th></tr>
+        <tr><td>Visually impaired</td><td>Subject to maintaining a CGPA &gt; 7</td></tr>
+      </table>
+    </main></body></html>"""
+    lines = extract_html(html.encode()).splitlines()
+    assert (
+        "Differently-Abled Scholarship | Sub Category: Visually impaired | "
+        "Conditions for renewal: Subject to maintaining a CGPA > 7."
+    ) in lines
 
 
 # ---------------------------------------------------------------------------
@@ -282,6 +435,118 @@ def test_split_gives_sections_valid_citation_ids():
 # ---------------------------------------------------------------------------
 # build_document - the full assembly, schema-validated
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Roman-numeral headings and table-band guards
+# ---------------------------------------------------------------------------
+
+
+def test_roman_heading_detects_srm_examination_headings():
+    assert _is_roman_heading("II. ADMISSION TO EXAMINATIONS") == ("II", "Admission To Examinations")
+    # No space after the dot, as in the real page.
+    assert _is_roman_heading("XII.INSTRUCTIONS TO THE CANDIDATES APPEARING FOR EXAMINATIONS")[0] == "XII"
+    # A trailing full stop or colon is fine on an ALL CAPS heading.
+    assert _is_roman_heading("XV. EVALUATION OF ANSWER BOOKLETS:") == ("XV", "Evaluation Of Answer Booklets")
+    assert _is_roman_heading(
+        "IV. ISSUE, COLLECTION OF EXAMINATION APPLICATION FORMS & PAYMENT OF EXAMINATION FEES."
+    )[0] == "IV"
+    assert _is_roman_heading("XXVIII. MISCELLANEOUS") == ("XXVIII", "Miscellaneous")
+    # Title Case works too, and ")" as the delimiter.
+    assert _is_roman_heading("III) Examination Time Table") == ("III", "Examination Time Table")
+
+
+def test_roman_heading_allows_long_all_caps_headings():
+    line = (
+        "VII. COLLECTION OF INTERNAL ASSESSMENT MARKS FOR THE THEORY OR PRACTICAL/ PURELY "
+        "INTERNAL COURSES AND EXTERNAL ASSESSMENT MARKS PRACTICAL / CLINICAL EXAMINATIONS"
+    )
+    assert len(line) > 100
+    assert _is_roman_heading(line)[0] == "VII"
+
+
+def test_roman_heading_never_matches_the_word_i():
+    """The reason Roman numerals were not detected before: "I" is a word."""
+    for line in [
+        "I",
+        "I.",
+        "I am a student of this university.",
+        "I. e. the student shall attend",
+        "I.e. the student shall attend",
+        "I declare the convocation open.",
+        "I/we will not discuss or inform anything related to this pre-audit.",
+        "I. The candidate shall be present at the hall.",
+        "I. Am I late?",
+    ]:
+        assert _is_roman_heading(line) is None, line
+
+
+def test_roman_heading_rejects_sentences_and_non_numerals():
+    for line in [
+        # Real line from SRM's attendance regulations: a sentence, not a heading.
+        "VI.  The maximum number of such courses that a student will be permitted by the",
+        "IIII. NOT A NUMERAL",
+        "C. HOSTEL RULES",  # C, D, L, M are deliberately not accepted
+        "D. Library Rules",
+        "(ii). Disqualify him/her permanently or for a specified period.",
+        "Velvet. GOLD BORDER",
+    ]:
+        assert _is_roman_heading(line) is None, line
+
+
+def test_lone_roman_numeral_joins_the_caps_heading_below_it():
+    text = "V.\nDETENTION/CANCELLATION OF CANDIDATURE\nIf a candidate does not earn ..."
+    assert join_lone_roman_numerals(text).splitlines()[0] == (
+        "V. DETENTION/CANCELLATION OF CANDIDATURE"
+    )
+
+
+def test_lone_numeral_is_not_joined_to_ordinary_text():
+    for text in ["I\nAM HERE", "V.\nThe candidate shall sign.", "I.\nfollowed by prose"]:
+        assert join_lone_roman_numerals(text) == text
+
+
+def test_roman_headings_split_a_document_into_citable_sections():
+    text = (
+        "II. ADMISSION TO EXAMINATIONS\n"
+        "Registration for examination is mandatory.\n"
+        "I am told this line is ordinary text.\n"
+        " V.\n"
+        "DETENTION/CANCELLATION OF CANDIDATURE\n"
+        "A candidate short of attendance may be detained.\n"
+        "XX. GRIEVANCES\n"
+        "Grievances go to the Controller of Examinations.\n"
+    )
+    sections = split_into_sections(text, "Examination Policy")
+    assert [s.section_key() for s in sections] == [
+        "II-admission_to_examinations",
+        "V-detention_cancellation_of_candidature",
+        "XX-grievances",
+    ]
+    assert "I am told this line is ordinary text." in sections[0].text
+
+
+def test_numbered_heading_rejects_table_bands():
+    """Real scholarship cells that used to become headings 95, 90, 85, 80."""
+    for line in [
+        "95 Percentile and above",
+        "90 to 94.99 Percentile",
+        "85 and 89.99 Percentile",
+        "95 Percentage and Above",
+        "95 th Percentile and above",
+    ]:
+        assert _is_numbered_heading(line) is None, line
+    # Real numbered headings are unaffected.
+    assert _is_numbered_heading("2. CLAT SCORE") == ("2", "CLAT SCORE")
+    assert _is_numbered_heading("4.2 Minimum Attendance") == ("4.2", "Minimum Attendance")
+
+
+def test_table_row_lines_are_never_headings_or_promoted():
+    row = "SAT SCORE | Category: 1401 -1500 | Scholarship Name: Merit Scholarship 75%"
+    assert _is_numbered_heading("3. " + row) is None
+    assert _is_roman_heading("II. " + row) is None
+    banded = "CUET | Percentile: 90 to 94.99 Percentile | Benefit: 75% Tuition Fee Waiver."
+    assert promote_inline_headings(banded) == banded
 
 
 def test_build_document_produces_a_valid_document():

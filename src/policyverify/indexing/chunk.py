@@ -53,6 +53,29 @@ _WORD_RE = re.compile(r"[A-Za-z]{2,}")
 # real rules: "Attend 75% of classes." is four words and must survive.
 _MIN_REAL_WORDS = 3
 
+# Two more kinds of furniture, found by listing every section under 60
+# characters after the 2026-11-15 ingestion repair. Both are limited to
+# sections that short, because only there were they observed, and the
+# asymmetric-risk reasoning above applies just as much:
+#
+#   A title with nothing under it - no lower-case letter at all, e.g. the
+#     examination policy's part title "EXAMINATIONS – RULES AND
+#     REGULATIONS". Rules are written as sentences; a short all-capitals
+#     line is a name for what follows, not something to cite.
+#   An unfinished fragment - a line that stops on a comma or colon and no
+#     full stop anywhere, e.g. the hostel rules' cover-page address
+#     "Hostels, SRM Nagar, Kattankulathur – 603" and "(updated Jan 2025)
+#     For Further Details Contact: Manager,", or the dangling lead-in "And,
+#     every course has well defined:" whose list items are their own
+#     sections. A complete rule, however short, does not end mid-phrase.
+#
+# Short real rules survive both: "The Chief Guest will deliver the
+# Convocation address." has lower case and a full stop, and a warden's
+# contact block (an email address and a phone number) ends on neither a
+# comma nor a colon.
+_FURNITURE_MAX_CHARS = 60
+_UNFINISHED_LINE_RE = re.compile(r"[,:]\s*$", re.MULTILINE)
+
 # Prefer to break long text at a blank line, then at a sentence end. Both
 # keep chunks readable; a hard character cut is the last resort.
 _PARAGRAPH_SPLIT_RE = re.compile(r"\n\s*\n")
@@ -65,8 +88,21 @@ def is_noise_section(section: Section) -> bool:
     Detected by counting real words, not characters: the observed noise in
     the SRM corpus is short *because it is a page number*, and word count
     separates that from a short-but-real rule far more reliably than length.
+
+    Short title lines and unfinished fragments are dropped too - see
+    _FURNITURE_MAX_CHARS for exactly which, and why so narrowly. Dropping a
+    section here never changes anyone's citation ID: IDs are assigned over
+    all sections of the document first (Document.citations()), and this
+    filter only decides which of them get indexed.
     """
-    return len(_WORD_RE.findall(section.text)) < _MIN_REAL_WORDS
+    text = section.text.strip()
+    if len(_WORD_RE.findall(text)) < _MIN_REAL_WORDS:
+        return True
+    if len(text) >= _FURNITURE_MAX_CHARS:
+        return False
+    if not any(c.islower() for c in text):
+        return True  # a title with nothing under it
+    return "." not in text and bool(_UNFINISHED_LINE_RE.search(text))
 
 
 def split_long_text(text: str, max_chars: int, overlap_chars: int) -> list[str]:
