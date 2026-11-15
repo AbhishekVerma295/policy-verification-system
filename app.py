@@ -36,6 +36,7 @@ from policyverify.pipeline import answer_question  # noqa: E402
 from policyverify.retrieve import retrieve  # noqa: E402
 from policyverify.schema import Answer, ClaimVerdict, VerdictStatus  # noqa: E402
 from policyverify.verify import NLIChecker  # noqa: E402
+from policyverify.verify.verifier import policy_says  # noqa: E402
 
 st.set_page_config(page_title="Policy Verification System", page_icon="✅", layout="wide")
 
@@ -47,12 +48,16 @@ STYLES = {
     VerdictStatus.NEUTRAL: ("UNVERIFIED", "#d98a00", "rgba(217, 138, 0, 0.10)"),
 }
 
+# A supported claim withheld because it does not answer the question asked.
+OFF_TOPIC_STYLE = ("TRUE BUT OFF TOPIC", "#6b7280", "rgba(107, 114, 128, 0.10)")
+
 # What the page says while each pipeline stage runs.
 STAGE_MESSAGES = {
     "retrieve": "1/4  Searching the policy documents for relevant passages ...",
     "generate": "2/4  The language model is writing claims from those passages "
     "(the slow step: 1-2 minutes without a GPU) ...",
-    "verify": "3/4  Checking every claim against the policy text it cites ...",
+    "verify": "3/4  Checking every claim against the policy text it cites, "
+    "and that it answers the question ...",
     "decide": "4/4  Keeping verified claims, removing the rest ...",
 }
 
@@ -140,9 +145,20 @@ def evidence_for(verdict: ClaimVerdict, store: VectorStore) -> list:
 
 def draw_claim(verdict: ClaimVerdict, store: VectorStore, key: str) -> None:
     label, colour, background = STYLES[verdict.status]
+    # A claim the relevance gate withheld is TRUE of its passage but does not
+    # answer the question, so "SUPPORTED" in green would be misleading on a
+    # removed card. getattr keeps answers saved before the gate working.
+    if getattr(verdict.checks, "relevant", None) is False:
+        label, colour, background = OFF_TOPIC_STYLE
     citations = "".join(
         f'<div class="cite">&rarr; {html.escape(c)}</div>' for c in verdict.claim.citation_ids
     ) or '<div class="cite">&rarr; (no citation given)</div>'
+    # The policy sentence behind a wrong claim, on the card itself. Empty for
+    # supported claims and for old saved answers without the evidence fields;
+    # also empty when the explanation above already quotes it.
+    policy_lines = "".join(
+        f'<div class="claim-why">{html.escape(line)}</div>' for line in policy_says(verdict)
+    )
 
     st.markdown(
         f"""
@@ -153,6 +169,7 @@ def draw_claim(verdict: ClaimVerdict, store: VectorStore, key: str) -> None:
           <div class="claim-text">{html.escape(verdict.claim.text)}</div>
           {citations}
           <div class="claim-why">{html.escape(verdict.explanation)}</div>
+          {policy_lines}
         </div>
         """,
         unsafe_allow_html=True,
@@ -181,6 +198,26 @@ def draw_claim(verdict: ClaimVerdict, store: VectorStore, key: str) -> None:
             + (f" - {checks.numeric_detail}" if checks.numeric_detail else "")
         )
         c3.markdown("**Citation exists**  \n" + ("yes" if checks.citation_exists else "no"))
+
+        # The one sentence that decided the verdict, shown before the whole
+        # section so the reader does not have to hunt for it. getattr keeps
+        # older saved answers (from before these fields existed) working.
+        evidence_text = getattr(checks, "evidence_text", None)
+        if evidence_text:
+            heading = (
+                "Contradicting sentence"
+                if verdict.status is VerdictStatus.REFUTED
+                else "Supporting sentence"
+            )
+            st.markdown(f"**{heading}** &middot; {html.escape(checks.evidence_chunk_id or '')}")
+            st.text(evidence_text)
+        contradicting_text = getattr(checks, "contradicting_text", None)
+        if getattr(checks, "conflict", False) and contradicting_text:
+            st.markdown(
+                "**Contradicting sentence (another cited section)** &middot; "
+                + html.escape(checks.contradicting_chunk_id or "")
+            )
+            st.text(contradicting_text)
 
         chunks = evidence_for(verdict, store)
         if not chunks:

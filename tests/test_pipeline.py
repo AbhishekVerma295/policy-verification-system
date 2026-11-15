@@ -204,6 +204,29 @@ def test_unsupported_claims_are_reported_not_dropped():
     assert answer.claims_removed[0].claim.text == "Students must pay a fine."
 
 
+def test_removed_refuted_claim_carries_the_policy_sentence():
+    """A wrong claim that was removed still shows the policy sentence that
+    contradicted it, so the removed-claims panel can quote it."""
+    from policyverify.verify.nli import CONTRADICTION
+
+    class ContradictingNLI:
+        def check(self, premise, hypothesis):
+            return NLIResult(
+                label=CONTRADICTION, entailment=0.01, neutral=0.03, contradiction=0.96,
+                strongest_contradiction=0.96, contradiction_window=PASSAGE, window=PASSAGE,
+            )
+
+    answer = answer_question(
+        "Why 90%?", config=load_config(), store=StubStore(),
+        llm=_llm_saying("Students need 90% attendance."), nli=ContradictingNLI(),
+    )
+    removed = answer.claims_removed[0]
+    assert removed.status is VerdictStatus.REFUTED
+    assert removed.checks.evidence_text == PASSAGE
+    assert PASSAGE in removed.explanation
+    assert CITATION in removed.explanation
+
+
 def test_fabricated_citations_are_surfaced_in_the_answer():
     """A citation pointing at nothing is a finding about the model, so it
     belongs in the answer rather than only in the logs."""
@@ -252,3 +275,160 @@ def test_on_stage_reports_each_stage_in_order():
         on_stage=seen.append,
     )
     assert seen == ["retrieve", "generate", "verify", "decide"]
+
+
+# ---------------------------------------------------------------------------
+# The relevance gate
+# ---------------------------------------------------------------------------
+
+
+def _gate_saying(relevant: bool, judge_failed: bool = False):
+    """A relevance gate that marks every supported claim as `relevant`."""
+    from policyverify.verify.relevance import OFF_TOPIC_NOTE, RelevanceReport
+
+    def gate(question, verdicts):
+        out = []
+        for v in verdicts:
+            checks = v.checks.model_copy(update={"relevant": relevant})
+            update = {"checks": checks}
+            if not relevant:
+                update["explanation"] = f"{OFF_TOPIC_NOTE} {v.explanation}"
+            out.append(v.model_copy(update=update))
+        return RelevanceReport(verdicts=out, judge_failed=judge_failed)
+
+    return gate
+
+
+def test_off_topic_answer_is_declined_with_its_own_reason():
+    answer = answer_question(
+        "Who is the current Vice Chancellor?", config=load_config(), store=StubStore(),
+        llm=_llm_saying("Students need 75% attendance."), nli=StubNLI(),
+        relevance=_gate_saying(False),
+    )
+    assert answer.abstained
+    assert answer.claims_kept == []
+    assert "do not appear to contain what was asked" in answer.reason
+    # nothing generated disappears: the true-but-off-topic claim is shown
+    assert len(answer.claims_removed) == 1
+    assert answer.claims_removed[0].status is VerdictStatus.SUPPORTED
+    assert answer.claims_removed[0].checks.relevant is False
+    assert "does not answer the question" in answer.claims_removed[0].explanation
+
+
+def test_relevant_answer_is_kept_when_the_gate_approves():
+    answer = answer_question(
+        "q", config=load_config(), store=StubStore(),
+        llm=_llm_saying("Students need 75% attendance."), nli=StubNLI(),
+        relevance=_gate_saying(True),
+    )
+    assert not answer.abstained
+    assert answer.claims_kept[0].checks.relevant is True
+
+
+def test_gate_runs_after_verification_and_sees_only_the_question_and_verdicts():
+    seen = {}
+
+    def gate(question, verdicts):
+        from policyverify.verify.relevance import RelevanceReport
+
+        seen["question"] = question
+        seen["statuses"] = [v.status for v in verdicts]
+        return RelevanceReport(verdicts=verdicts)
+
+    answer_question(
+        "What is the attendance rule?", config=load_config(), store=StubStore(),
+        llm=_llm_saying("Students need 75% attendance."), nli=StubNLI(), relevance=gate,
+    )
+    assert seen["question"] == "What is the attendance rule?"
+    assert seen["statuses"] == [VerdictStatus.SUPPORTED]
+
+
+def test_gate_time_is_recorded_and_counted_inside_verify_time():
+    import time
+
+    def slow_gate(question, verdicts):
+        from policyverify.verify.relevance import RelevanceReport
+
+        time.sleep(0.02)
+        return RelevanceReport(verdicts=verdicts)
+
+    answer = answer_question(
+        "q", config=load_config(), store=StubStore(),
+        llm=_llm_saying("Students need 75% attendance."), nli=StubNLI(), relevance=slow_gate,
+    )
+    t = answer.timings
+    assert t.relevance_ms >= 15
+    assert t.verify_ms >= t.relevance_ms
+    # included in verify_ms, so not added to the total a second time
+    assert t.total_ms == pytest.approx(t.retrieve_ms + t.generate_ms + t.verify_ms)
+
+
+def test_a_failed_judge_is_recorded_on_the_answer():
+    answer = answer_question(
+        "q", config=load_config(), store=StubStore(),
+        llm=_llm_saying("Students need 75% attendance."), nli=StubNLI(),
+        relevance=_gate_saying(True, judge_failed=True),
+    )
+    assert answer.relevance_judge_failed
+
+
+def test_default_gate_with_a_store_that_has_no_embedder_does_not_crash():
+    """Stub stores have no embedding model; the real gate then has only the
+    language model, and an unusable reply leaves claims unchecked and flagged
+    rather than raising."""
+    answer = answer_question(
+        "q", config=load_config(), store=StubStore(),
+        llm=_llm_saying("Students need 75% attendance."), nli=StubNLI(),
+    )
+    assert not answer.abstained
+    assert answer.claims_kept[0].checks.relevance_source == "unchecked"
+    assert answer.relevance_judge_failed
+
+
+def test_gate_switched_off_leaves_the_answer_as_verification_made_it():
+    config = load_config()
+    config.relevance.enabled = False
+    answer = answer_question(
+        "q", config=config, store=StubStore(),
+        llm=_llm_saying("Students need 75% attendance."), nli=StubNLI(),
+    )
+    assert not answer.abstained
+    assert answer.claims_kept[0].checks.relevant is None
+    assert not answer.relevance_judge_failed
+
+
+def test_answers_saved_before_the_gate_existed_still_load():
+    from policyverify.schema import Answer
+
+    old = {
+        "question": "q",
+        "claims_kept": [
+            {
+                "claim": {"text": "Students need 75% attendance.", "citation_ids": [CITATION]},
+                "status": "SUPPORTED",
+                "score": 0.9,
+                "checks": {"nli_label": "entailment", "citation_exists": True},
+            }
+        ],
+        "timings": {"retrieve_ms": 1.0, "generate_ms": 2.0, "verify_ms": 3.0},
+    }
+    answer = Answer.model_validate(old)
+    assert answer.claims_kept[0].checks.relevant is None
+    assert answer.timings.relevance_ms == 0.0
+    assert answer.relevance_judge_failed is False
+
+
+def test_baseline_without_verification_counts_relevance_removed_claims_as_generated():
+    """The verification-off baseline means "nothing was checked", so a claim
+    withheld for being off topic is part of what the model generated."""
+    from policyverify.evaluate import without_verification
+
+    answer = answer_question(
+        "q", config=load_config(), store=StubStore(),
+        llm=_llm_saying("Students need 75% attendance."), nli=StubNLI(),
+        relevance=_gate_saying(False),
+    )
+    assert answer.abstained
+    baseline = without_verification(answer)
+    assert not baseline.abstained
+    assert [v.claim.text for v in baseline.claims_kept] == ["Students need 75% attendance."]

@@ -26,6 +26,7 @@ from policyverify.indexing import IndexMismatchError  # noqa: E402
 from policyverify.llm import LLMError  # noqa: E402
 from policyverify.pipeline import answer_question  # noqa: E402
 from policyverify.schema import Answer, ClaimVerdict, VerdictStatus  # noqa: E402
+from policyverify.verify.verifier import policy_says  # noqa: E402
 
 LABELS = {
     VerdictStatus.SUPPORTED: "SUPPORTED",
@@ -44,6 +45,8 @@ def print_claim(index: int, verdict: ClaimVerdict) -> None:
     if not verdict.claim.citation_ids:
         print("        -> (no citation given)")
     print(f"      {verdict.explanation}")
+    for line in policy_says(verdict):  # only for old saved answers; see policy_says
+        print(f"      {line}")
     if verdict.checks.numeric_detail and verdict.checks.numeric_ok is False:
         print(f"      numbers: {verdict.checks.numeric_detail}")
 
