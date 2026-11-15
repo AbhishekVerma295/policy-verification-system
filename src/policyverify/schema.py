@@ -412,6 +412,42 @@ class CheckResults(BaseModel):
     citation_exists: bool = False
     citation_supports: bool | None = None
 
+    # The specific sentence (or short run of sentences) that decided the
+    # verdict, and which chunk it came from. A whole section is often a page
+    # long; showing the reader the one sentence that proves - or disproves -
+    # the claim is what makes the verdict checkable at a glance.
+    #
+    # All of these default to empty so run logs saved before they existed
+    # (eval/results/*.jsonl) still load.
+    evidence_text: str | None = None
+    evidence_chunk_id: str | None = None
+    # True when one cited section supports the claim and a DIFFERENT cited
+    # section strongly contradicts it. Such a claim is not kept: the reader
+    # deserves to know the sources disagree rather than see one picked.
+    conflict: bool = False
+    # For a conflict: the contradicting sentence and the chunk it came from.
+    contradicting_text: str | None = None
+    contradicting_chunk_id: str | None = None
+    # True when support came from an exact quote of the passage rather than
+    # from the NLI model.
+    exact_quote: bool = False
+
+    # The relevance gate (verify/relevance.py): does a supported claim answer
+    # the question that was ASKED? Verification only proves a claim is true of
+    # its passage, never that it is on topic. None = never judged (an unsupported
+    # claim, the gate switched off, or a run saved before the gate existed);
+    # False = true but off-topic, so the claim is withheld; True = on topic.
+    relevant: bool | None = None
+    # Cosine similarity of the claim to the question (the same measure the
+    # retrieval step uses), when it could be computed.
+    relevance_similarity: float | None = None
+    # How the decision was reached: "similarity" (clear-cut either way, no
+    # model asked), "judge" (borderline, the language model decided), or
+    # "similarity_fallback" (the model could not be reached or gave an
+    # unusable reply, so the similarity alone decided), "unchecked" (neither
+    # signal was available, the claim was left as it was).
+    relevance_source: str | None = None
+
 
 class ClaimVerdict(BaseModel):
     """One claim, after checking, with the evidence and the reasoning."""
@@ -440,6 +476,10 @@ class Timings(BaseModel):
     retrieve_ms: float = 0.0
     generate_ms: float = 0.0
     verify_ms: float = 0.0
+    # Time the relevance gate took. It is INCLUDED in verify_ms (the gate is
+    # part of checking), so it is not added again in total_ms; this field only
+    # says how much of verify_ms it was.
+    relevance_ms: float = 0.0
 
     @property
     def total_ms(self) -> float:
@@ -462,6 +502,10 @@ class Answer(BaseModel):
 
     abstained: bool = False
     reason: str | None = None  # why we abstained, in plain language
+    # True when the relevance gate's language-model judge could not be used on
+    # this question (unreachable, or an unusable reply) and the similarity
+    # alone decided. Recorded so a fallback is never silent.
+    relevance_judge_failed: bool = False
 
     timings: Timings = Field(default_factory=Timings)
     # Which model and settings produced this, so a saved run can be understood

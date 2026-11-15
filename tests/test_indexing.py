@@ -370,3 +370,127 @@ def test_get_by_citation_is_stable_across_calls():
     first = _store_with([2, 0, 1]).get_by_citation(CITATION_FOR_ORDER)
     second = _store_with([1, 2, 0]).get_by_citation(CITATION_FOR_ORDER)
     assert [c.chunk_id for c in first] == [c.chunk_id for c in second]
+
+
+# ---------------------------------------------------------------------------
+# The cached keyword index and the similarity lookup
+# ---------------------------------------------------------------------------
+
+
+class _MemoryCollection:
+    """Just enough of a Chroma collection, held in memory: add, and get by
+    ids or everything. Rows come back reversed on purpose - Chroma promises
+    no order, so nothing here may depend on one."""
+
+    def __init__(self):
+        self.rows: dict[str, tuple[str, list[float], dict]] = {}
+
+    def add(self, ids, documents, embeddings, metadatas):
+        for cid, doc, vec, meta in zip(ids, documents, embeddings, metadatas, strict=True):
+            self.rows[cid] = (doc, list(vec), meta)
+
+    def get(self, ids=None, where=None, include=None):
+        keys = [k for k in self.rows if ids is None or k in ids][::-1]
+        return {
+            "ids": keys,
+            "documents": [self.rows[k][0] for k in keys],
+            "embeddings": [self.rows[k][1] for k in keys],
+            "metadatas": [self.rows[k][2] for k in keys],
+        }
+
+    def count(self):
+        return len(self.rows)
+
+
+class _MemoryClient:
+    def __init__(self):
+        self.collection = None
+
+    def delete_collection(self, name):
+        self.collection = None
+
+    def get_or_create_collection(self, name, metadata=None):
+        if self.collection is None:
+            self.collection = _MemoryCollection()
+        return self.collection
+
+
+class _FakeEmbedder:
+    """Every chunk gets the same unit vector; the tests here are about the
+    keyword index, not about embeddings."""
+
+    def encode_documents(self, texts):
+        return [[1.0, 0.0] for _ in texts]
+
+
+def _memory_store(tmp_path):
+    config = load_config()
+    config.paths.index = str(tmp_path / "index")
+    store = VectorStore(config, embedder=_FakeEmbedder())
+    store._client = _MemoryClient()
+    return store
+
+
+def _plain_chunk(name: str, text: str) -> Chunk:
+    return Chunk(
+        chunk_id=f"srm/attendance/{name}#0",
+        text=text,
+        citation_id=f"srm/attendance/{name}",
+        university="srm",
+        university_name="SRM Institute of Science and Technology",
+        policy_type=PolicyType.ATTENDANCE,
+        section_path=f"Policy > {name}",
+        source_url="https://example.srmist.edu.in/p",
+    )
+
+
+def test_bm25_index_is_built_once_and_cached(tmp_path):
+    store = _memory_store(tmp_path)
+    store.build([_plain_chunk("a", "Students must attend classes.")])
+    first = store.bm25_index()
+    assert store.bm25_index() is first
+    assert len(first) == 1
+
+
+def test_rebuilding_the_index_replaces_the_cached_keyword_index(tmp_path):
+    """A keyword index left over from the old corpus would keep returning
+    sections that no longer exist - and nothing would raise."""
+    store = _memory_store(tmp_path)
+    store.build([_plain_chunk("old", "The condonation rule.")])
+    assert store.bm25_index().search("condonation", k=5)
+
+    store.build([_plain_chunk("new", "The hostel curfew rule.")])
+    assert store.bm25_index().search("condonation", k=5) == []
+    hits = store.bm25_index().search("curfew", k=5)
+    assert [c.chunk_id for c, _ in hits] == ["srm/attendance/new#0"]
+
+
+def test_all_chunks_is_sorted_whatever_order_chroma_returns(tmp_path):
+    store = _memory_store(tmp_path)
+    store.build([_plain_chunk(n, f"text {n}") for n in ("b", "c", "a")])
+    assert [c.chunk_id for c in store.all_chunks()] == [
+        "srm/attendance/a#0",
+        "srm/attendance/b#0",
+        "srm/attendance/c#0",
+    ]
+
+
+def test_similarities_match_each_vector_to_its_own_id():
+    """The lookup must pair each returned embedding with ITS id - Chroma may
+    return the rows in any order, so zipping against the request would mix
+    up which chunk gets which similarity."""
+    store = VectorStore(load_config())
+    collection = _MemoryCollection()
+    collection.add(
+        ids=["x", "y", "z"],
+        documents=["", "", ""],
+        embeddings=[[1.0, 0.0], [0.0, 1.0], [0.6, 0.8]],
+        metadatas=[{}, {}, {}],
+    )
+    store._collection = collection
+
+    sims = store.similarities([1.0, 0.0], ["x", "y", "z"])
+    assert sims["x"] == pytest.approx(1.0)
+    assert sims["y"] == pytest.approx(0.0)
+    assert sims["z"] == pytest.approx(0.6)
+    assert store.similarities([1.0, 0.0], []) == {}

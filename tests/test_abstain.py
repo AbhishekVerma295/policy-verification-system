@@ -222,3 +222,65 @@ def test_retrieval_check_is_skipped_when_not_provided():
     no retrieval and still get a decision."""
     decision = decide([_verdict()], None, load_config())
     assert not decision.abstained
+
+
+# ---------------------------------------------------------------------------
+# The relevance gate's verdicts: true but off topic
+# ---------------------------------------------------------------------------
+
+
+def _off_topic(text: str = "Off topic but true.") -> ClaimVerdict:
+    v = _verdict(text)
+    return v.model_copy(update={"checks": v.checks.model_copy(update={"relevant": False})})
+
+
+def _on_topic(text: str = "On topic.") -> ClaimVerdict:
+    v = _verdict(text)
+    return v.model_copy(update={"checks": v.checks.model_copy(update={"relevant": True})})
+
+
+def test_off_topic_claims_are_not_kept_even_though_supported():
+    assert not should_keep(_off_topic(), load_config())
+
+
+def test_claims_the_gate_never_judged_are_kept_as_before():
+    """relevant is None for gate-off runs and for runs saved before the gate
+    existed; both must behave exactly as they always did."""
+    assert _verdict().checks.relevant is None
+    assert should_keep(_verdict(), load_config())
+
+
+def test_on_topic_claims_are_kept():
+    assert should_keep(_on_topic(), load_config())
+
+
+def test_abstains_when_every_supported_claim_is_off_topic():
+    decision = decide([_off_topic("A."), _off_topic("B.")], [_retrieved()], load_config())
+    assert decision.abstained
+    assert decision.kept == []
+    assert "do not appear to contain what was asked" in decision.reason
+    assert "do not answer the question" in decision.reason
+    assert "contradicted" not in decision.reason
+
+
+def test_off_topic_claims_are_removed_not_deleted():
+    """The no-claim-lost rule holds for the new reason too."""
+    verdicts = [_off_topic("A."), _off_topic("B."), _verdict("C.", VerdictStatus.REFUTED, 0.99)]
+    decision = decide(verdicts, [_retrieved()], load_config())
+    assert len(decision.kept) + len(decision.removed) == len(verdicts)
+    assert [v.claim.text for v in decision.off_topic] == ["A.", "B."]
+    assert [v.claim.text for v in decision.refuted] == ["C."]
+
+
+def test_off_topic_reason_mentions_other_unverified_claims():
+    verdicts = [_off_topic("A."), _verdict("B.", VerdictStatus.NEUTRAL, 0.1)]
+    decision = decide(verdicts, [_retrieved()], load_config())
+    assert "1 other claim(s) could not be verified" in decision.reason
+
+
+def test_an_off_topic_claim_beside_a_relevant_one_is_just_removed():
+    verdicts = [_on_topic("Good."), _off_topic("Tangent.")]
+    decision = decide(verdicts, [_retrieved()], load_config())
+    assert not decision.abstained
+    assert [v.claim.text for v in decision.kept] == ["Good."]
+    assert [v.claim.text for v in decision.removed] == ["Tangent."]

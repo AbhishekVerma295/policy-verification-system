@@ -4,6 +4,7 @@ abstain.py - deciding whether to answer at all, and what to stand behind.
 Two decisions live here, and they are different:
 
   WHICH CLAIMS TO KEEP   a claim survives only if verification supported it
+                         AND the relevance gate found it answers the question
   WHETHER TO ANSWER      if too little survives, decline the whole question
 
 REMOVED CLAIMS ARE KEPT, NOT DELETED
@@ -16,6 +17,11 @@ REMOVED CLAIMS ARE KEPT, NOT DELETED
     between "the policy does not mention this" and "we checked and it was
     wrong". Showing the removals is what makes the system auditable rather
     than merely trustworthy-looking.
+
+    The same goes for a claim withheld for being off topic: it is TRUE of its
+    passage, so it is listed as removed with that reason rather than dropped,
+    and if nothing on topic is left the reason says the policies do not
+    appear to contain what was asked.
 
 WHY OVER-ABSTENTION IS ALSO A FAILURE
     A system that refuses everything scores perfectly on hallucination rate
@@ -61,6 +67,16 @@ class AbstentionDecision:
         """Removed claims that simply could not be confirmed either way."""
         return [v for v in self.removed if v.status is not VerdictStatus.REFUTED]
 
+    @property
+    def off_topic(self) -> list[ClaimVerdict]:
+        """Removed claims that were TRUE but did not answer the question.
+
+        Kept apart from refuted and unsupported ones: nothing is wrong with
+        these claims, they are simply not what was asked, and saying so is
+        more honest than calling them unverified.
+        """
+        return [v for v in self.removed if v.checks.relevant is False]
+
 
 def should_keep(verdict: ClaimVerdict, config: Config | None = None) -> bool:
     """Does this claim survive verification?
@@ -69,11 +85,17 @@ def should_keep(verdict: ClaimVerdict, config: Config | None = None) -> bool:
     and confidently so. NEUTRAL means the evidence did not settle it, which is
     not the same as the claim being true, and REFUTED means the cited text
     says otherwise.
+
+    A supported claim the relevance gate marked off topic (`relevant is
+    False`) is not kept either: true, but not an answer to the question. A
+    claim the gate never judged (`relevant is None`) is unaffected, which is
+    what keeps saved runs and gate-off runs behaving as before.
     """
     config = config or get_config()
     return (
         verdict.status is VerdictStatus.SUPPORTED
         and verdict.score >= config.abstention.min_claim_score
+        and verdict.checks.relevant is not False
     )
 
 
@@ -132,6 +154,21 @@ def decide(
     decision = AbstentionDecision(abstained=True, reason=None, kept=[], removed=removed)
     refuted = len(decision.refuted)
     total = len(verdicts)
+
+    # The claims were true but none of them answered the question: the
+    # corpus does not contain what was asked. Say that, rather than the
+    # misleading "could not be verified".
+    off_topic = len(decision.off_topic)
+    if off_topic and not kept:
+        others = total - off_topic
+        extra = f" ({others} other claim(s) could not be verified.)" if others else ""
+        decision.removed = removed + kept
+        decision.reason = (
+            f"The policies do not appear to contain what was asked: {off_topic} "
+            f"statement(s) found were supported by the policy but do not answer "
+            f"the question.{extra} They are shown below rather than hidden."
+        )
+        return decision
 
     if refuted:
         detail = (

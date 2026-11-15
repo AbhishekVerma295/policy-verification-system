@@ -232,6 +232,47 @@ class AbstentionConfig(BaseModel):
     min_retrieval_score: float = 0.25
 
 
+class RelevanceConfig(BaseModel):
+    """The relevance gate: does a verified claim answer the question asked?
+
+    Verification proves a claim is TRUE of its passage; it never asks whether
+    the claim is what the user wanted. "Who is the current Vice Chancellor?"
+    -> "The Vice-Chancellor will deliver the welcome address" is true, cited
+    and on a nearby topic, and no use as an answer. The gate computes how
+    close the verified claims are to the question and, unless that is clear
+    either way, asks the language model one yes/no question.
+
+    All three thresholds were chosen on the TUNING questions and the fresh
+    questions only - never the held-out half - so they are somewhat
+    optimistic for those same questions. See verify/relevance.py.
+    """
+
+    # False = gate off: every verified claim counts as relevant, exactly as
+    # before the gate existed.
+    enabled: bool = True
+    # Cosine similarity (question with the retrieval query prefix, against the
+    # claim text) at or above which the answer is on topic without asking the
+    # model. Deliberately high: on the replayed answers, off-topic claims that
+    # merely repeat the question's words (e.g. "the late fee is calculated
+    # from the date of payment", asked for the fee amount) reached 0.81, so
+    # anything under about 0.85 still needs the model's opinion.
+    similarity_accept: float = 0.85
+    # Similarity below which the claim is off topic without asking the model.
+    # No good answer scored under 0.574; the lowest off-topic ones were far
+    # lower still, so this saves a model call and a mistake on the clear cases.
+    similarity_reject: float = 0.55
+    # Between the two thresholds the model is asked. If it cannot be used
+    # (unreachable, unusable reply) the answer is judged on similarity alone
+    # against this single cut-off, and the Answer records that the fallback
+    # happened. Low on purpose: similarity cannot tell a true-but-off-topic
+    # claim from a good one in the 0.6-0.8 band, and a cut-off of 0.65
+    # blocked 5 of 52 good answers while catching no more than 0.60 did.
+    similarity_fallback: float = 0.60
+    # Longest claim list shown to the model, most similar first, so the prompt
+    # stays short.
+    judge_max_claims: int = 6
+
+
 class Config(BaseModel):
     """The whole configuration."""
 
@@ -243,6 +284,7 @@ class Config(BaseModel):
     nli: NLIConfig = Field(default_factory=NLIConfig)
     verification: VerificationConfig = Field(default_factory=VerificationConfig)
     abstention: AbstentionConfig = Field(default_factory=AbstentionConfig)
+    relevance: RelevanceConfig = Field(default_factory=RelevanceConfig)
 
     def fingerprint(self) -> dict[str, str]:
         """A short summary of the settings that affect results.
