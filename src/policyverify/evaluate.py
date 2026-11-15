@@ -42,6 +42,7 @@ as an argument, so the scoring logic is tested with canned answers.
 from __future__ import annotations
 
 import json
+import math
 import statistics
 from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
@@ -245,6 +246,29 @@ def rescore_without_verification(
 # ---------------------------------------------------------------------------
 
 
+def wilson_interval(successes: int, total: int, z: float = 1.96) -> tuple[float, float] | None:
+    """A 95% confidence interval for a proportion, or None for zero items.
+
+    WHY EVERY HEADLINE NUMBER CARRIES ONE
+        The adversarial set is small. "64.5% on 31 questions" sounds precise
+        and is not: the same system could plausibly score anywhere from the
+        high 40s to the high 70s on another 31 questions of the same kind.
+        Printing the interval beside the number stops a two-question
+        difference between runs being read as an improvement.
+
+    The Wilson interval rather than the textbook +/- formula, because that
+    one misbehaves exactly where these numbers live: small samples and rates
+    near 0% or 100% (it can report an interval reaching below zero).
+    """
+    if total <= 0:
+        return None
+    p = successes / total
+    denom = 1 + z * z / total
+    centre = (p + z * z / (2 * total)) / denom
+    half = z * math.sqrt(p * (1 - p) / total + z * z / (4 * total * total)) / denom
+    return (round(max(0.0, centre - half), 4), round(min(1.0, centre + half), 4))
+
+
 def _rate(numerator: int, denominator: int) -> float | None:
     """A proportion, or None when there is nothing to take a proportion of.
 
@@ -296,11 +320,29 @@ def summarise_results(results: list[ItemResult]) -> dict:
     for r in results:
         outcomes[r.outcome.value] = outcomes.get(r.outcome.value, 0) + 1
 
+    passed = sum(1 for r in scored if r.passed)
+    hallucinated = sum(1 for r in scored if r.outcome in HALLUCINATIONS)
+    # Everything the system chose to answer, answerable or not, and how much
+    # of it was wrong in ANY way. The hallucination rate only counts a wrong
+    # figure the labels happened to list as forbidden; an answer resting on
+    # the wrong section, or missing the figure asked for, is also something
+    # the system stood behind and should not have. This counts those too.
+    stood_behind = [r for r in scored if not r.abstained]
+    stood_behind_wrong = sum(1 for r in stood_behind if not r.passed)
+
     return {
         "items": len(results),
         "scored": len(scored),
         "errors": len(results) - len(scored),
-        "accuracy": _rate(sum(1 for r in scored if r.passed), len(scored)),
+        "accuracy": _rate(passed, len(scored)),
+        "accuracy_ci": wilson_interval(passed, len(scored)),
+        "hallucination_ci": wilson_interval(hallucinated, len(scored)),
+        "answered": {
+            "items": len(stood_behind),
+            "wrong": stood_behind_wrong,
+            "wrong_rate": _rate(stood_behind_wrong, len(stood_behind)),
+            "wrong_ci": wilson_interval(stood_behind_wrong, len(stood_behind)),
+        },
         "abstention": {
             "unanswerable_items": len(unanswerable),
             "correct_abstention_rate": _rate(
@@ -314,9 +356,7 @@ def summarise_results(results: list[ItemResult]) -> dict:
         "citation_accuracy": _rate(
             sum(1 for r in answered if r.kept_claims_on_expected > 0), len(answered)
         ),
-        "hallucination_rate": _rate(
-            sum(1 for r in scored if r.outcome in HALLUCINATIONS), len(scored)
-        ),
+        "hallucination_rate": _rate(hallucinated, len(scored)),
         "claims": {
             "generated": kept + removed,
             "kept": kept,
@@ -413,14 +453,30 @@ def format_report(summary: dict, results: Iterable[ItemResult] = ()) -> str:
     def pct(value: float | None) -> str:
         return "   n/a" if value is None else f"{value * 100:5.1f}%"
 
+    def ci(interval) -> str:
+        # Absent in summaries saved before intervals existed.
+        if not interval:
+            return ""
+        return f"  [95% CI {interval[0] * 100:.0f}-{interval[1] * 100:.0f}%]"
+
     a, c = summary["abstention"], summary["claims"]
+    answered = summary.get("answered") or {}
     lines = [
         f"items scored          {summary['scored']} of {summary['items']}"
         + (f"  ({summary['errors']} errored)" if summary["errors"] else ""),
-        f"overall accuracy      {pct(summary['accuracy'])}",
+        f"overall accuracy      {pct(summary['accuracy'])}{ci(summary.get('accuracy_ci'))}",
         "",
-        f"hallucination rate    {pct(summary['hallucination_rate'])}   "
-        "(stood behind a wrong figure, or answered an unanswerable question)",
+        f"hallucination rate    {pct(summary['hallucination_rate'])}"
+        f"{ci(summary.get('hallucination_ci'))}",
+        "                      (stood behind a wrong figure, or answered an unanswerable question)",
+    ]
+    if answered:
+        lines += [
+            f"wrong when answering  {pct(answered['wrong_rate'])}{ci(answered['wrong_ci'])}",
+            f"                      ({answered['wrong']} of {answered['items']} answers given were "
+            "wrong in any way, not only by a listed figure)",
+        ]
+    lines += [
         f"citation accuracy     {pct(summary['citation_accuracy'])}   "
         "(answered questions resting on an expected section)",
         f"correct abstention    {pct(a['correct_abstention_rate'])}   "
@@ -463,4 +519,40 @@ def format_report(summary: dict, results: Iterable[ItemResult] = ()) -> str:
                 if part
             )
             lines.append(f"  {r.id:<10} {r.outcome.value:<22} {detail}")
+    return "\n".join(lines)
+
+
+def format_comparison(with_verification: dict, without_verification: dict) -> str:
+    """The system beside the same generations with verification switched off.
+
+    Printed after every run, not hidden behind a flag, because it answers the
+    only question that justifies the verifier existing: does checking the
+    claims make the answers better than not checking them? If the two columns
+    match, the verifier is costing time and false abstentions for nothing,
+    and that should be impossible to miss.
+    """
+
+    def pct(value: float | None) -> str:
+        return "   n/a" if value is None else f"{value * 100:5.1f}%"
+
+    def delta(on: float | None, off: float | None) -> str:
+        if on is None or off is None:
+            return ""
+        return f"{(on - off) * 100:+6.1f} pts"
+
+    rows = [
+        ("overall accuracy", "accuracy", None),
+        ("hallucination rate", "hallucination_rate", None),
+        ("citation accuracy", "citation_accuracy", None),
+        ("correct abstention", "abstention", "correct_abstention_rate"),
+        ("false abstention", "abstention", "false_abstention_rate"),
+    ]
+    lines = [
+        "verification on vs off (same model output, re-scored)",
+        f"  {'':<20}{'on':>8}{'off':>8}{'change':>12}",
+    ]
+    for label, key, sub in rows:
+        on = with_verification[key][sub] if sub else with_verification[key]
+        off = without_verification[key][sub] if sub else without_verification[key]
+        lines.append(f"  {label:<20}{pct(on):>8}{pct(off):>8}{delta(on, off):>12}")
     return "\n".join(lines)

@@ -206,6 +206,27 @@ def test_summary_headline_rates():
     assert summary["citation_accuracy"] == pytest.approx(1.0)
 
 
+def test_summary_counts_every_wrong_answer_given_and_carries_intervals():
+    summary = summarise_results(results_fixture())
+    # a, b and e were answered; b and e were wrong. c and d declined, so they
+    # are not "answers given" at all.
+    assert summary["answered"]["items"] == 3
+    assert summary["answered"]["wrong"] == 2
+    assert summary["answered"]["wrong_rate"] == pytest.approx(2 / 3, abs=1e-4)
+    low, high = summary["accuracy_ci"]
+    assert low < summary["accuracy"] < high
+    assert summary["hallucination_ci"] is not None
+
+
+def test_report_shows_intervals_and_tolerates_summaries_saved_without_them():
+    summary = summarise_results(results_fixture())
+    assert "95% CI" in format_report(summary)
+    # A summary written before intervals existed must still print.
+    for key in ("accuracy_ci", "hallucination_ci", "answered"):
+        summary.pop(key)
+    assert "overall accuracy" in format_report(summary)
+
+
 def test_summary_claim_counts():
     results = [
         score_item(

@@ -1,0 +1,121 @@
+# Labelled claims for measuring the verifier on its own - see src/policyverify/claimset.py.
+#
+# One JSON object per line. Lines starting with # and blank lines are ignored.
+#
+# Every claim was written against the indexed text of the section it cites and
+# checked by reading that text. "verbatim" claims are sentences copied from the
+# section, so they are true by construction.
+#
+#   label  supported | not_supported     - does the cited section support it?
+#   kind   paraphrase verbatim           - supported claims
+#          number role negation entity   - the section conflicts with the claim
+#          unsupported wrong_section     - the section is silent on the claim
+#   split  tuning | heldout              - adjust thresholds on tuning only;
+#                                          report final numbers on heldout
+#
+# The split alternates within each kind, so both halves cover every kind.
+# Created 2026-11-15 from the claims used in the project audit. All of them
+# have been scored once already, so neither half is untouched; add new claims
+# to the heldout half before quoting a final number.
+
+
+# --- paraphrase ---
+{"id": "par-001", "claim": "Students must maintain at least 75% attendance in each individual course.", "citation_ids": ["srm/attendance/7.3-minimum_attendance"], "label": "supported", "kind": "paraphrase", "split": "tuning"}
+{"id": "par-002", "claim": "Condonation of attendance cannot exceed 10%.", "citation_ids": ["srm/attendance/7.5-condonation_of_attendance"], "label": "supported", "kind": "paraphrase", "split": "heldout"}
+{"id": "par-003", "claim": "A student needs at least 50% of the total normalized marks to pass a course.", "citation_ids": ["srm/attendance/8.2-method_of_awarding_letter_grades"], "label": "supported", "kind": "paraphrase", "split": "tuning"}
+{"id": "par-004", "claim": "Each semester normally consists of 90 working days.", "citation_ids": ["srm/attendance/5.1-semester_duration"], "label": "supported", "kind": "paraphrase", "split": "heldout"}
+{"id": "par-005", "claim": "A B.Tech degree may take at most 12 semesters.", "citation_ids": ["srm/attendance/5.1-semester_duration"], "label": "supported", "kind": "paraphrase", "split": "tuning"}
+{"id": "par-006", "claim": "The B.Tech degree requires a total of 160 credits.", "citation_ids": ["srm/attendance/8.11-eligibility_for_award_of_the_b_tech_degr"], "label": "supported", "kind": "paraphrase", "split": "heldout"}
+{"id": "par-007", "claim": "English is the medium of instruction.", "citation_ids": ["srm/attendance/4.1-medium_of_instruction"], "label": "supported", "kind": "paraphrase", "split": "tuning"}
+{"id": "par-008", "claim": "Students with a CGPA of 9.5 or above may self-learn approved elective courses.", "citation_ids": ["srm/attendance/3.8-guided_study_self_learning"], "label": "supported", "kind": "paraphrase", "split": "heldout"}
+{"id": "par-009", "claim": "A student may take at most two self-learning courses in the whole programme.", "citation_ids": ["srm/attendance/3.8-guided_study_self_learning"], "label": "supported", "kind": "paraphrase", "split": "tuning"}
+{"id": "par-010", "claim": "A Minor requires 18 to 20 additional credits.", "citation_ids": ["srm/attendance/8.13-minor_certification"], "label": "supported", "kind": "paraphrase", "split": "heldout"}
+{"id": "par-011", "claim": "A student needs a minimum CGPA of 7.0 up to semester V to pursue a Minor.", "citation_ids": ["srm/attendance/8.13-minor_certification"], "label": "supported", "kind": "paraphrase", "split": "tuning"}
+{"id": "par-012", "claim": "A hostel fine must be cleared within one month of being fined.", "citation_ids": ["srm/residence/payment_of_fine-2"], "label": "supported", "kind": "paraphrase", "split": "heldout"}
+{"id": "par-013", "claim": "A student found wasting food is fined Rs.500 the first time.", "citation_ids": ["srm/residence/mess-2"], "label": "supported", "kind": "paraphrase", "split": "tuning"}
+{"id": "par-014", "claim": "Day scholars are not entertained as guests in the mess.", "citation_ids": ["srm/residence/mess-2"], "label": "supported", "kind": "paraphrase", "split": "heldout"}
+{"id": "par-015", "claim": "An extra fan of up to 100W is charged Rs 2500 per year.", "citation_ids": ["srm/residence/other_charges"], "label": "supported", "kind": "paraphrase", "split": "tuning"}
+{"id": "par-016", "claim": "Misuse or tampering of ID cards can lead to five days academic suspension.", "citation_ids": ["srm/code_of_conduct/consequence-2"], "label": "supported", "kind": "paraphrase", "split": "heldout"}
+{"id": "par-017", "claim": "Damage to campus property leads to seven days academic suspension.", "citation_ids": ["srm/code_of_conduct/consequence-3"], "label": "supported", "kind": "paraphrase", "split": "tuning"}
+{"id": "par-018", "claim": "A student can appeal in writing to the Registrar.", "citation_ids": ["srm/code_of_conduct/7-appeal_process"], "label": "supported", "kind": "paraphrase", "split": "heldout"}
+{"id": "par-019", "claim": "The decision of the Appellate Committee is final and binding.", "citation_ids": ["srm/code_of_conduct/7-appeal_process"], "label": "supported", "kind": "paraphrase", "split": "tuning"}
+{"id": "par-020", "claim": "A CLAT rank in the top 2500 receives a 100% tuition fee waiver.", "citation_ids": ["srm/scholarship/2-clat_score"], "label": "supported", "kind": "paraphrase", "split": "heldout"}
+{"id": "par-021", "claim": "Siblings cannot apply for scholarships.", "citation_ids": ["srm/scholarship/note-2"], "label": "supported", "kind": "paraphrase", "split": "tuning"}
+{"id": "par-022", "claim": "The equivalent percentage of marks is the CGPA multiplied by 10.", "citation_ids": ["srm/attendance/8.7-equivalent_percentage_calculation"], "label": "supported", "kind": "paraphrase", "split": "heldout"}
+{"id": "par-023", "claim": "All hostellers have to vacate the hostel during the summer vacation.", "citation_ids": ["srm/residence/25.0-summer_winter_break"], "label": "supported", "kind": "paraphrase", "split": "tuning"}
+{"id": "par-024", "claim": "The Dean CET may suspend a student pending inquiry.", "citation_ids": ["srm/attendance/6.3-suspension"], "label": "supported", "kind": "paraphrase", "split": "heldout"}
+{"id": "par-025", "claim": "A cancellation fee of Rs.5000 is deducted when a first-year student withdraws before the start of the program.", "citation_ids": ["srm/residence/7.1-for_all_i_year_students"], "label": "supported", "kind": "paraphrase", "split": "tuning"}
+{"id": "par-026", "claim": "No student is permitted to stay alone in a room.", "citation_ids": ["srm/residence/room_allotment"], "label": "supported", "kind": "paraphrase", "split": "heldout"}
+{"id": "par-027", "claim": "A student can apply to the Controller of Examinations for a review of the end-semester answer script.", "citation_ids": ["srm/attendance/8.4-re_view_of_answer_scripts"], "label": "supported", "kind": "paraphrase", "split": "tuning"}
+{"id": "par-028", "claim": "A parent must inform the hostel office at least 7 days before the expected date of occupancy.", "citation_ids": ["srm/residence/guest_accommodation"], "label": "supported", "kind": "paraphrase", "split": "heldout"}
+{"id": "par-029", "claim": "There are two floor representatives for each floor.", "citation_ids": ["srm/residence/17.0-hostel_representatives"], "label": "supported", "kind": "paraphrase", "split": "tuning"}
+{"id": "par-030", "claim": "The odd semester runs from July to November.", "citation_ids": ["srm/attendance/academic_session"], "label": "supported", "kind": "paraphrase", "split": "heldout"}
+{"id": "par-031", "claim": "A mark range of 91 to 100 earns an O grade.", "citation_ids": ["srm/attendance/8.1-course_wise_grading_of_students"], "label": "supported", "kind": "paraphrase", "split": "tuning"}
+{"id": "par-032", "claim": "Smoking is strictly prohibited in the hostel premises.", "citation_ids": ["srm/residence/sanctity_of_the_hostels"], "label": "supported", "kind": "paraphrase", "split": "heldout"}
+
+# --- verbatim ---
+{"id": "vrb-001", "claim": "Each semester of study shall normally consist of 90 working days or 450 hours inclusive of end-semester final examinations.", "citation_ids": ["srm/attendance/5.1-semester_duration"], "label": "supported", "kind": "verbatim", "split": "tuning"}
+{"id": "vrb-002", "claim": "In rare and genuine cases, a committee consisting of Head of the Department and Senior Faculty members of the concerned department will examine the case, based on the documents submitted by the student, facts and circumstances.", "citation_ids": ["srm/attendance/7.5-condonation_of_attendance"], "label": "supported", "kind": "verbatim", "split": "heldout"}
+{"id": "vrb-003", "claim": "Students who maintain CGPA 9.5 and above will have the flexibility of self-learning an existing approved elective courses with prior permission from department starting from Semester- VI.", "citation_ids": ["srm/attendance/3.8-guided_study_self_learning"], "label": "supported", "kind": "verbatim", "split": "tuning"}
+{"id": "vrb-004", "claim": "Minor is an option rather than a requirement for B.", "citation_ids": ["srm/attendance/8.13-minor_certification"], "label": "supported", "kind": "verbatim", "split": "heldout"}
+{"id": "vrb-005", "claim": "The Controller of Examinations shall facilitate the review of the answer script jointly to be carried out by the student and the faculty detailed for this purpose.", "citation_ids": ["srm/attendance/8.4-re_view_of_answer_scripts"], "label": "supported", "kind": "verbatim", "split": "tuning"}
+{"id": "vrb-006", "claim": "The teacher shall prepare the particulars of all students who have attendance less than 75% in his / her course.", "citation_ids": ["srm/attendance/7.4-attendance_shortage_and_examination"], "label": "supported", "kind": "verbatim", "split": "heldout"}
+{"id": "vrb-007", "claim": "Late Registration / enrollment will not be encouraged.", "citation_ids": ["srm/attendance/3.3-late_registration_enrollment"], "label": "supported", "kind": "verbatim", "split": "tuning"}
+{"id": "vrb-008", "claim": "Normalized marks are referred to the Result Passing Board for the finalization of results.", "citation_ids": ["srm/attendance/8.3-declaration_of_results"], "label": "supported", "kind": "verbatim", "split": "heldout"}
+{"id": "vrb-009", "claim": "All Hostlers have to vacate the hostel during the summer vacation every year.", "citation_ids": ["srm/residence/25.0-summer_winter_break"], "label": "supported", "kind": "verbatim", "split": "tuning"}
+{"id": "vrb-010", "claim": "When a student is fined for any violation of hostel rule, he/she has to clear his/her fine within one month from the date of fining.", "citation_ids": ["srm/residence/payment_of_fine-2"], "label": "supported", "kind": "verbatim", "split": "heldout"}
+{"id": "vrb-011", "claim": "Playing instruments/music at a loud volume, singing aloud, shouting and making noise of any kind causing disturbance to others is discouraged.", "citation_ids": ["srm/residence/23.0-noise_pollution"], "label": "supported", "kind": "verbatim", "split": "tuning"}
+{"id": "vrb-012", "claim": "There will be two Floor Representatives for each floor mutually nominated by the residents of the respective floors to represent students’ problems.", "citation_ids": ["srm/residence/17.0-hostel_representatives"], "label": "supported", "kind": "verbatim", "split": "heldout"}
+{"id": "vrb-013", "claim": "SRMIST has developed this policy and the students are expected to follow these guidelines to conduct themselves as law-abiding citizens of India.", "citation_ids": ["srm/code_of_conduct/disciplinary_action_policy"], "label": "supported", "kind": "verbatim", "split": "tuning"}
+{"id": "vrb-014", "claim": "Cases of serious illness and diseases should be reported immediately to the concerned Warden/deputy warden/SRO for necessary action.", "citation_ids": ["srm/residence/26.0-medical_assistance"], "label": "supported", "kind": "verbatim", "split": "heldout"}
+{"id": "vrb-015", "claim": "Every department has a prescribed programme structure which, in general terms, is known as the Curriculum.", "citation_ids": ["srm/attendance/2.1-curriculum"], "label": "supported", "kind": "verbatim", "split": "tuning"}
+
+# --- number ---
+{"id": "num-001", "claim": "Students must maintain at least 80% attendance in each individual course.", "citation_ids": ["srm/attendance/7.3-minimum_attendance"], "label": "not_supported", "kind": "number", "split": "tuning"}
+{"id": "num-002", "claim": "Condonation of attendance can be granted up to 25%.", "citation_ids": ["srm/attendance/7.5-condonation_of_attendance"], "label": "not_supported", "kind": "number", "split": "heldout"}
+{"id": "num-003", "claim": "A student needs at least 40% of the total normalized marks to pass a course.", "citation_ids": ["srm/attendance/8.2-method_of_awarding_letter_grades"], "label": "not_supported", "kind": "number", "split": "tuning"}
+{"id": "num-004", "claim": "Each semester normally consists of 75 working days.", "citation_ids": ["srm/attendance/5.1-semester_duration"], "label": "not_supported", "kind": "number", "split": "heldout"}
+{"id": "num-005", "claim": "The B.Tech degree requires a total of 127 credits.", "citation_ids": ["srm/attendance/8.11-eligibility_for_award_of_the_b_tech_degr"], "label": "not_supported", "kind": "number", "split": "tuning"}
+{"id": "num-006", "claim": "Students with a CGPA of 8.5 or above may self-learn approved elective courses.", "citation_ids": ["srm/attendance/3.8-guided_study_self_learning"], "label": "not_supported", "kind": "number", "split": "heldout"}
+{"id": "num-007", "claim": "A hostel fine must be cleared within one week of being fined.", "citation_ids": ["srm/residence/payment_of_fine-2"], "label": "not_supported", "kind": "number", "split": "tuning"}
+{"id": "num-008", "claim": "There are four floor representatives for each floor.", "citation_ids": ["srm/residence/17.0-hostel_representatives"], "label": "not_supported", "kind": "number", "split": "heldout"}
+
+# --- role ---
+{"id": "rol-001", "claim": "A student found wasting food is fined Rs.2000 the first time.", "citation_ids": ["srm/residence/mess-2"], "label": "not_supported", "kind": "role", "split": "tuning"}
+{"id": "rol-002", "claim": "A parent may stay in the hostel as a guest for up to 7 days.", "citation_ids": ["srm/residence/guest_accommodation"], "label": "not_supported", "kind": "role", "split": "heldout"}
+{"id": "rol-003", "claim": "A B.Tech degree may take at most 14 semesters.", "citation_ids": ["srm/attendance/5.1-semester_duration"], "label": "not_supported", "kind": "role", "split": "tuning"}
+{"id": "rol-004", "claim": "A CLAT rank in the top 2500 receives a 75% tuition fee waiver.", "citation_ids": ["srm/scholarship/2-clat_score"], "label": "not_supported", "kind": "role", "split": "heldout"}
+{"id": "rol-005", "claim": "A mark range of 81 to 90 earns an O grade.", "citation_ids": ["srm/attendance/8.1-course_wise_grading_of_students"], "label": "not_supported", "kind": "role", "split": "tuning"}
+{"id": "rol-006", "claim": "A Minor requires 7.0 additional credits.", "citation_ids": ["srm/attendance/8.13-minor_certification"], "label": "not_supported", "kind": "role", "split": "heldout"}
+
+# --- negation ---
+{"id": "neg-001", "claim": "Day scholars are welcome as guests in the mess.", "citation_ids": ["srm/residence/mess-2"], "label": "not_supported", "kind": "negation", "split": "tuning"}
+{"id": "neg-002", "claim": "Siblings of current students can apply for scholarships.", "citation_ids": ["srm/scholarship/note-2"], "label": "not_supported", "kind": "negation", "split": "heldout"}
+{"id": "neg-003", "claim": "A student may stay alone in a room if they wish.", "citation_ids": ["srm/residence/room_allotment"], "label": "not_supported", "kind": "negation", "split": "tuning"}
+{"id": "neg-004", "claim": "Smoking is permitted in the hostel premises.", "citation_ids": ["srm/residence/sanctity_of_the_hostels"], "label": "not_supported", "kind": "negation", "split": "heldout"}
+{"id": "neg-005", "claim": "The decision of the Disciplinary Committee cannot be appealed.", "citation_ids": ["srm/code_of_conduct/7-appeal_process"], "label": "not_supported", "kind": "negation", "split": "tuning"}
+{"id": "neg-006", "claim": "Students with less than 75% attendance may still appear for the end semester examination.", "citation_ids": ["srm/attendance/7.3-minimum_attendance"], "label": "not_supported", "kind": "negation", "split": "heldout"}
+{"id": "neg-007", "claim": "Hostellers are free to stay in the hostel throughout the summer vacation.", "citation_ids": ["srm/residence/25.0-summer_winter_break"], "label": "not_supported", "kind": "negation", "split": "tuning"}
+
+# --- entity ---
+{"id": "ent-001", "claim": "Hindi is the medium of instruction.", "citation_ids": ["srm/attendance/4.1-medium_of_instruction"], "label": "not_supported", "kind": "entity", "split": "tuning"}
+{"id": "ent-002", "claim": "The Registrar may suspend a student pending inquiry.", "citation_ids": ["srm/attendance/6.3-suspension"], "label": "not_supported", "kind": "entity", "split": "heldout"}
+{"id": "ent-003", "claim": "A student can appeal in writing to the Dean.", "citation_ids": ["srm/code_of_conduct/7-appeal_process"], "label": "not_supported", "kind": "entity", "split": "tuning"}
+{"id": "ent-004", "claim": "A student can apply to the Head of the Department for a review of the answer script.", "citation_ids": ["srm/attendance/8.4-re_view_of_answer_scripts"], "label": "not_supported", "kind": "entity", "split": "heldout"}
+{"id": "ent-005", "claim": "The odd semester runs from January to May.", "citation_ids": ["srm/attendance/academic_session"], "label": "not_supported", "kind": "entity", "split": "tuning"}
+
+# --- unsupported ---
+{"id": "uns-001", "claim": "Students who fall below the attendance requirement must pay a fine.", "citation_ids": ["srm/attendance/7.3-minimum_attendance"], "label": "not_supported", "kind": "unsupported", "split": "tuning"}
+{"id": "uns-002", "claim": "The mess fee is collected every month.", "citation_ids": ["srm/residence/mess-2"], "label": "not_supported", "kind": "unsupported", "split": "heldout"}
+{"id": "uns-003", "claim": "Students staying during vacation must pay an additional daily charge.", "citation_ids": ["srm/residence/25.0-summer_winter_break"], "label": "not_supported", "kind": "unsupported", "split": "tuning"}
+{"id": "uns-004", "claim": "B.Tech students must complete an internship abroad to receive the degree.", "citation_ids": ["srm/attendance/8.11-eligibility_for_award_of_the_b_tech_degr"], "label": "not_supported", "kind": "unsupported", "split": "heldout"}
+{"id": "uns-005", "claim": "Floor representatives are elected by secret ballot every semester.", "citation_ids": ["srm/residence/17.0-hostel_representatives"], "label": "not_supported", "kind": "unsupported", "split": "tuning"}
+{"id": "uns-006", "claim": "A suspended student loses hostel accommodation.", "citation_ids": ["srm/attendance/6.3-suspension"], "label": "not_supported", "kind": "unsupported", "split": "heldout"}
+
+# --- wrong_section ---
+{"id": "wsc-001", "claim": "Condonation of attendance cannot exceed 10%.", "citation_ids": ["srm/attendance/7.3-minimum_attendance"], "label": "not_supported", "kind": "wrong_section", "split": "tuning"}
+{"id": "wsc-002", "claim": "English is the medium of instruction.", "citation_ids": ["srm/attendance/7.3-minimum_attendance"], "label": "not_supported", "kind": "wrong_section", "split": "heldout"}
+{"id": "wsc-003", "claim": "A hostel fine must be cleared within one month of being fined.", "citation_ids": ["srm/residence/mess-2"], "label": "not_supported", "kind": "wrong_section", "split": "tuning"}
+{"id": "wsc-004", "claim": "The B.Tech degree requires a total of 160 credits.", "citation_ids": ["srm/attendance/8.12-eligibility_for_award_of_the_diploma"], "label": "not_supported", "kind": "wrong_section", "split": "heldout"}
+{"id": "wsc-005", "claim": "No student is permitted to stay alone in a room.", "citation_ids": ["srm/residence/17.0-hostel_representatives"], "label": "not_supported", "kind": "wrong_section", "split": "tuning"}
+{"id": "wsc-006", "claim": "Damage to campus property leads to seven days academic suspension.", "citation_ids": ["srm/code_of_conduct/consequence-2"], "label": "not_supported", "kind": "wrong_section", "split": "heldout"}
