@@ -48,7 +48,8 @@ llm:
   # Generous: with no GPU a normal answer takes over a minute.
   timeout_seconds: 300
   # Cap on reply length, so a runaway generation cannot hang a question.
-  max_tokens: 800
+  # 1500 fits the six claims the prompt asks for; 800 cut replies off.
+  max_tokens: 1500
   num_ctx: 8192
 
 nli:

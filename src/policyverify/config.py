@@ -94,6 +94,31 @@ class RetrievalConfig(BaseModel):
     # multiple of top_k. Needs to be > 1 or capping would just leave gaps.
     oversample_factor: int = 4
 
+    # Hybrid search: run a keyword (BM25) search alongside the embedding
+    # search and merge the two rankings. Embeddings alone are touchy about
+    # wording on this corpus - "What is minimum marks needed to pass a
+    # course ?" ranked the section that says "To 'Pass' a course ... 50%"
+    # about 10th. See indexing/bm25.py and retrieve.py. False = embedding
+    # search only, exactly as before.
+    hybrid_search: bool = True
+    # The constant k in Reciprocal Rank Fusion, the merge rule: each search
+    # gives a passage 1 / (rrf_k + its rank) and the two are added. A larger
+    # value flattens the difference between rank 1 and rank 10, so agreement
+    # between the two searches matters more than either one's top pick. 60 is
+    # the value from the original paper (Cormack et al., SIGIR 2009) and is
+    # the usual default.
+    rrf_k: int = 60
+    # How many candidates each search contributes before merging. Large
+    # enough that a passage one search ranks badly can still be rescued by
+    # the other; the per-section cap and top_k are applied after the merge.
+    hybrid_candidate_pool: int = 50
+    # BM25's two knobs. k1: how quickly repeating a word stops adding to the
+    # score (higher = repetition keeps counting for longer). b: how much
+    # long passages are penalised for having more words (0 = not at all,
+    # 1 = fully). 1.5 and 0.75 are the textbook defaults.
+    bm25_k1: float = 1.5
+    bm25_b: float = 0.75
+
 
 class LLMConfig(BaseModel):
     """Which language model writes the draft answer.
@@ -115,11 +140,20 @@ class LLMConfig(BaseModel):
     timeout_seconds: int = 300
     num_ctx: int = 8192
     # The most tokens the model may write in one reply. A normal answer is a
-    # few hundred. Without a cap, a model in JSON mode can fall into emitting
-    # output forever - measured: one adversarial question ran for 25 minutes
-    # and never returned. A reply cut off here fails to parse, is retried
-    # once, and is then reported as an error, which is the right outcome.
-    max_tokens: int = 800
+    # few hundred; the prompt asks for at most 6 claims. Without a cap, a
+    # model in JSON mode can fall into emitting output forever - measured: one
+    # adversarial question ran for 25 minutes and never returned. It was 800,
+    # which cut real replies off mid-claim (an answer of many long claims runs
+    # past it); 1500 leaves room for six full claims. A reply that is still
+    # cut off is no longer thrown away: generate.py keeps every claim that was
+    # completed before the cut.
+    max_tokens: int = 1500
+    # The most characters of passage text put in one prompt. Whole passages
+    # are shown (never cut in the middle); if the total would be larger than
+    # this, the lowest-ranked passages are left out instead. 16000 characters
+    # is roughly 4000 tokens, which with the instructions and a full-length
+    # reply (max_tokens) still fits inside num_ctx.
+    max_passage_chars: int = 16000
 
     # Qwen3 is a hybrid reasoning model: it can emit "thinking" tokens before
     # its answer, and Ollama returns those in a SEPARATE field. Combined with
@@ -152,6 +186,22 @@ class NLIConfig(BaseModel):
     device: str = "cpu"
     # An entailment score below this is not treated as support.
     entailment_threshold: float = 0.5
+    # How strongly one cited section must contradict a claim, while another
+    # cited section supports it, before the claim is withheld as "the sources
+    # disagree". Stricter than entailment_threshold on purpose: a weak
+    # contradiction from a loosely related section is common and harmless,
+    # and treating it as a conflict would throw away well-supported claims.
+    # Only applies across DIFFERENT citation IDs - see verifier.py.
+    conflict_threshold: float = 0.9
+    # The claim is scored against single sentences of the passage and against
+    # runs of up to this many neighbouring sentences. 1 = sentences only.
+    # Measured on the tuning claims: 1 missed a true claim that joins two
+    # sentences (recall 87.5%); 2 and 3 both reached 91.7%. 3 is kept because
+    # it is what the SummaC-style probe validated, and it cost under 1 s/claim.
+    max_window_sentences: int = 3
+    # How many (sentence, claim) pairs the model scores at once. Batching
+    # amortises the per-call overhead across many short pairs.
+    batch_size: int = 16
 
 
 class VerificationConfig(BaseModel):

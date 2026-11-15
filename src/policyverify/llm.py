@@ -27,8 +27,16 @@ class LLMError(RuntimeError):
 class LLMBackend(Protocol):
     """What the rest of the system needs from a language model."""
 
-    def generate(self, prompt: str, *, json_mode: bool = True) -> str:
-        """Return the model's reply as raw text."""
+    def generate(
+        self, prompt: str, *, json_mode: bool = True, schema: dict | None = None
+    ) -> str:
+        """Return the model's reply as raw text.
+
+        `schema`, when given, is a JSON schema the reply must follow. It is
+        stronger than `json_mode`: json_mode only promises "some JSON", and
+        measured on this model that let it invent its own field names, while
+        a schema fixes the field names and types.
+        """
         ...
 
 
@@ -42,7 +50,9 @@ class OllamaBackend:
     def model(self) -> str:
         return self.config.llm.model
 
-    def generate(self, prompt: str, *, json_mode: bool = True) -> str:
+    def generate(
+        self, prompt: str, *, json_mode: bool = True, schema: dict | None = None
+    ) -> str:
         import ollama
 
         cfg = self.config.llm
@@ -57,7 +67,11 @@ class OllamaBackend:
                 "num_predict": cfg.max_tokens,
             },
         }
-        if json_mode:
+        if schema is not None:
+            # Ollama "structured outputs": decoding itself is constrained to
+            # the schema, so the field names and types cannot drift.
+            kwargs["format"] = schema
+        elif json_mode:
             kwargs["format"] = "json"
         if cfg.disable_thinking:
             # See LLMConfig.disable_thinking - without this, Qwen3's reply
