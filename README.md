@@ -1,6 +1,7 @@
 # Policy Verification System
 
 A question-answering system for university policies that **shows its work**.
+A transparent question-answering system for university policies.
 
 Ask it *"What is the minimum attendance requirement?"* and it does not simply
 answer. It breaks its answer into separate factual claims, checks each one
