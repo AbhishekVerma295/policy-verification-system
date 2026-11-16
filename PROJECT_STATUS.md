@@ -83,6 +83,36 @@ hallucination 2.0%, unanswerable declined 8 of 9, wrongly declined 2-4 of 40.
 | **Corpus** | 6 documents, 212 sections, 192 indexed sections, 262 chunks |
 | **Largest section** | 10,395 characters (was about 42,000) |
 
+### 0.3a Final held-out results (16 Nov 2026, each run once, code at commit `3782df6`)
+
+All measured. Nothing was changed in the system after these questions were seen.
+
+| | New 40 (teammate's questions and answer key) | Original held-out 31 | Original 31 at the audit (14 Nov) |
+|---|---|---|---|
+| Accuracy (scorer) | 77.5% (95% interval 62-88%) | 74.2% (57-86%) | 64.5% |
+| Hallucination rate | 0.0% (0-9%) | 6.5% (2-21%) | 19.4% |
+| Unanswerable declined | 6 of 6 | 7 of 8 | 3 of 8 |
+| Answerable wrongly declined | 7 of 34 (20.6%) | 4 of 23 (17.4%) | - |
+| Accuracy, verification on vs off | 77.5% vs 75.0% | 74.2% vs 67.7% | equal |
+| Hallucination, verification on vs off | 0.0% vs 20.0% | 6.5% vs 25.8% | - |
+
+Runs: `eval/results/run-20261116-104137` (new 40, `eval/final_heldout.jsonl`),
+`run-20261116-104643` (original 31), `verifier-20261116-105128` (held-out
+claims: precision 88.5%, recall 100%, false-accept 16.7% = 3 of 18, all
+"right number, wrong row").
+
+Hand reading of the new 40 against the teammate's key: 26 of 40 fully
+correct (65%). Five answers the scorer passed give only half of what the
+key asks (`tm-15`, `tm-22`, `tm-23`, `tm-24`, `tm-25`). Of the 7 declined,
+5 had a correct answer that was blocked (`tm-11`, `tm-12`, `tm-30` by the
+relevance gate; `tm-33`, `tm-35` by the verifier on a table row) and 2 had
+a wrong answer that verification rightly stopped (`tm-34`, `tm-36`).
+`tm-04` gave the right fine but cited the wrong section, and the verifier
+accepted it. No false statement was shown as verified.
+
+Not done: the full "what each part adds" table. Only verification on/off
+was measured.
+
 ### 0.4 Known weaknesses
 
 - **Two false-premise questions are still declined** (`fp-001`, `fp-011`): the

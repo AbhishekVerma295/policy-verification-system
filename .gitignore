@@ -36,6 +36,7 @@ models/
 *.jsonl
 !eval/adversarial.jsonl
 !eval/claims.jsonl
+!eval/final_heldout.jsonl
 
 # --- Editors and OS --------------------------------------------------------
 .vscode/
