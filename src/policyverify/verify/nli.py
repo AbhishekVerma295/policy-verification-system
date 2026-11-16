@@ -45,11 +45,30 @@ WHY THE PASSAGE IS CUT INTO SENTENCES, NOT 900-CHARACTER WINDOWS
     to overlapping ~300-character slices. Nothing is ever skipped: skipping
     text is the silent wrong answer this project exists to prevent.
 
-WHY PDF NEWLINES ARE FLATTENED FIRST
+WHY PDF NEWLINES ARE FLATTENED - BUT ONLY AFTER THE STRUCTURE IS READ
     PDF text has hard line breaks in the middle of sentences ("at least 75%\n
     in individual courses"). Left in, they hide sentence boundaries and break
-    exact-quote matching, so all whitespace is collapsed to single spaces
-    before anything else happens.
+    exact-quote matching, so whitespace inside a unit is collapsed to single
+    spaces.
+
+    The line breaks are read first, though, because some of them ARE the
+    structure, and flattening everything at once lost it (measured after the
+    ingestion repair, when answerable questions started being declined):
+      - Table rows. Ingestion writes each row as one self-describing line
+        ("SAT SCORE | Category: 1401 -1500 | ... | Benefit: 75% ..."). A row
+        is a unit on its own and is never joined to its neighbour in a
+        window, because two rows are two categories (see _layout).
+      - List items. A line starting "a)", "(ii)" or "2." starts a new unit
+        even with no full stop before it, a bare "1." is kept with its item,
+        and a numbered subsection heading ("5.2 Temporary withdrawal ...")
+        ends the stretch that windows may span (see _prose_sentences).
+      - Lead-in lists. A timetable under "Food will be served at the
+        following timings: -" is also offered item by item with its lead-in
+        line, so "Dinner 07.30 pm 09.00 pm" is read as one fact
+        (see _lead_in_units).
+    These only ADD ways for the passage's own words to be read correctly or
+    take away windows that glued unrelated rules together; the threshold,
+    the model and the "support anywhere wins" rule are unchanged.
 
 WHY THERE IS AN EXACT-QUOTE SHORTCUT
     If the claim appears word for word inside the passage, the passage
@@ -93,6 +112,47 @@ _WINDOW_OVERLAP = 200
 # start a sentence (a capital, a digit, an opening bracket or quote). The
 # lookahead stops "e.g. the" and "approx. 5" splitting in most cases.
 _SENTENCE_END_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9(\"'])")
+
+# Sentence ends are also recognised before a lettered or roman list marker
+# ("program. b) If a student ..."): the general rule above wants a capital,
+# so without this a whole a)/b) list became one long unit the model could
+# not read (measured: a true claim about item a) scored 0.00 against it).
+_LIST_ITEM_END_RE = re.compile(r"(?<=[.!?;])\s+(?=\(?(?:[a-z]|[ivx]{1,4})\)\s)")
+# A numbered item that starts mid-line with no full stop before it
+# ("Five days academic suspension 2. Any complaint ..."): PDF and HTML lists
+# lose their line breaks, and the next item's number is the only boundary
+# left. Only "<lowercase word> N. Capital", so "Rs.5000", "12.5 Menu" and
+# "under Rule 2. The" never split. The match marks the gap with \x00, and
+# the text is then split there.
+_INLINE_NUMBER_RE = re.compile(r"(\b[a-z]+)\s+(?=\d{1,2}\.\s+[A-Z])")
+# A piece that is nothing but a list marker ("1.", "12.1", "b)", "(ii)").
+# The sentence rule splits "cards. 1. Intimation" after "1.", leaving the
+# marker as a unit of its own that asserts nothing; it is joined back onto
+# the item it introduces.
+_MARKER_ONLY_RE = re.compile(r"^(?:\(?[a-zA-Z]\)|\(?[ivxIVX]{1,5}\)|\d{1,3}(?:\.\d{1,3})*\.?|[-•*–])$")
+# A line opening a numbered subsection: "5.2 Temporary withdrawal ...",
+# "12.10 If a day scholar ...", optionally after the stray "R" margin mark
+# the PDFs carry. Windows never cross one (see _layout): measured, a window
+# running from "(iii) M.Tech ... maximum of 14 semesters" over the 5.2
+# heading into a 5.3 sentence naming B.Tech "supported" the false claim
+# "a B.Tech degree may take at most 14 semesters" at 0.99.
+_SUBSECTION_RE = re.compile(r"^(?:R\s+)?\d{1,2}(?:\.\d{1,2})+\s+[A-Z]")
+# A piece that ENDS with the next item's number: "<lowercase word or colon>
+# N." at the very end.
+_TRAILING_MARKER_RE = re.compile(r"^(.*\b[a-z]+|.*:)\s+(\d{1,2}\.)$")
+# Where a list item starts on its own line: a marker, as above, followed by
+# a space. Used to find the items under a lead-in line (see _lead_in_units).
+_ITEM_MARKER_RE = re.compile(r"^(?:\(?[a-zA-Z]\)|\(?[ivxIVX]{1,5}\)|\d{1,2}[.)]|[-•*–])\s")
+# A short line starting with a capital ("Breakfast", "Dinner") also starts a
+# list item under a lead-in; a long one is ordinary prose and ends the list.
+_SHORT_ITEM_CHARS = 40
+_MAX_LIST_ITEMS = 20
+
+# One self-describing table row, as ingestion writes them: cells separated by
+# " | ", with at least one "Label: value" cell, e.g.
+# "SAT SCORE | Category: 1401 -1500 | Benefit: 75% Tuition Fee Waiver."
+_TABLE_ROW_RE = re.compile(r"^[^|\n]+(?:\s\|\s[^|\n]+)+$")
+_TABLE_CELL_LABEL_RE = re.compile(r"\|\s*[^|:]{1,60}:\s")
 
 # A "sentence" longer than this almost certainly is not one - it is a table
 # or list with no full stops. Such text is cut into overlapping slices
@@ -149,6 +209,36 @@ class NLIResult:
     contradiction_window: str = ""
     # True when the verdict came from the exact-quote shortcut, not the model.
     exact_quote: bool = False
+    # Strongest contradiction from a unit that is NOT a table row, and its
+    # text. This is what verifier.py's "two sections disagree" rule uses; see
+    # `conflict_strength`. None means "not recorded" (stubs, old interface).
+    prose_contradiction: float | None = None
+    prose_contradiction_window: str = ""
+
+    @property
+    def conflict_strength(self) -> float:
+        """How strongly this passage contradicts the claim, for the purpose of
+        deciding that two cited SECTIONS disagree.
+
+        Table rows are left out. Each row states one value for one category
+        ("SAT 1101-1200 -> 10% waiver"), and the model reads a different
+        category's row as contradicting a claim about another category: a
+        true "the 75% merit scholarship is a 75% waiver" was withheld as a
+        conflict because the MAT table, which has no 75% row, "contradicted"
+        it at 0.99 with its 100% row. That is two tables about different
+        things, not two sources disagreeing. Prose rules still count in full,
+        and a row can still REFUTE a claim nothing supports.
+        """
+        if self.prose_contradiction is None:
+            return self.max_contradiction
+        return self.prose_contradiction
+
+    @property
+    def conflict_text(self) -> str:
+        """The unit that produced conflict_strength."""
+        if self.prose_contradiction is None:
+            return self.max_contradiction_text
+        return self.prose_contradiction_window
 
     @property
     def score(self) -> float:
@@ -186,30 +276,222 @@ def flatten(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def is_table_row(text: str) -> bool:
+    """Is this one self-describing table row ("A | Label: value | ...")?
+
+    Ingestion stores every HTML table row as one line of this shape, with the
+    table's own lead-in and column names repeated in it, so a row can be read
+    on its own. See `_layout` for why rows are kept apart from prose.
+    """
+    text = text.strip()
+    return bool(_TABLE_ROW_RE.match(text)) and bool(_TABLE_CELL_LABEL_RE.search(text))
+
+
+def _slice_long(piece: str) -> list[str]:
+    """A piece too long to be a sentence, as overlapping slices.
+
+    Slices start every _SLICE_STEP characters; the final slice is allowed to
+    be short, and we stop once the end has been covered.
+    """
+    if len(piece) <= _MAX_SENTENCE_CHARS:
+        return [piece]
+    out: list[str] = []
+    start = 0
+    while True:
+        out.append(piece[start : start + _SLICE_CHARS].strip())
+        if start + _SLICE_CHARS >= len(piece):
+            break
+        start += _SLICE_STEP
+    return out
+
+
+def _prose_sentences(text: str) -> list[str]:
+    """Sentences of a stretch of prose, after flattening whitespace.
+
+    On top of the plain sentence rule, list structure is respected: a new
+    sentence starts at a lettered item after a full stop ("... program. b)
+    If ...") and at a numbered item that follows a word with no full stop
+    ("suspension 2. Any complaint"), and a bare marker ("1.") is joined to
+    the item it introduces instead of standing alone.
+
+    A line that begins with a list marker also starts a new sentence, full
+    stop or not. Lists are often written one item per line with no
+    punctuation ("c) Withdrawal from Summer semester courses is not
+    permitted" / "d) These courses will be conducted for 7 to 8 weeks"), and
+    flattened they ran together into one unit in which the rule that
+    mattered was buried.
+    """
+    segments: list[str] = []
+    for line in text.splitlines() or [text]:
+        if segments and _ITEM_MARKER_RE.match(line.strip()):
+            segments.append(line)
+        elif segments:
+            segments[-1] += "\n" + line
+        else:
+            segments.append(line)
+    pieces: list[str] = []
+    for segment in segments:
+        flat = flatten(segment)
+        for part in _SENTENCE_END_RE.split(flat) if flat else []:
+            for sub in _LIST_ITEM_END_RE.split(part):
+                marked = _INLINE_NUMBER_RE.sub("\\1\x00", sub)
+                pieces.extend(p.strip() for p in marked.split("\x00"))
+    merged: list[str] = []
+    carry = ""
+    for piece in pieces:
+        if not piece:
+            continue
+        if _MARKER_ONLY_RE.match(piece):
+            carry = f"{carry} {piece}".strip()
+            continue
+        piece = f"{carry} {piece}".strip() if carry else piece
+        carry = ""
+        # "Intimation to parents or / and 2." - the next item's number was
+        # left on the end of this one. Move it forward. Only after a
+        # lowercase word or a colon, so "... under Rule 2." keeps its number.
+        trailing = _TRAILING_MARKER_RE.match(piece)
+        if trailing:
+            piece, carry = trailing.group(1), trailing.group(2)
+        merged.append(piece)
+    if carry:  # a trailing marker with nothing after it
+        merged.append(carry)
+    out: list[str] = []
+    for piece in merged:
+        out.extend(_slice_long(piece))
+    return out
+
+
+def _lead_in_units(lines: list[str]) -> list[str]:
+    """A list item joined to the line that introduces it.
+
+    Timetables and similar lists are written as a lead-in line ending in a
+    colon followed by short items, one per line:
+
+        Food will be served at the following timings: -
+        Breakfast / 07.00 am / to 09.00 am / ... / Dinner / 07.30 pm / 09.00 pm
+
+    Flattened, that is one long "sentence" in which the model cannot tell
+    which time belongs to which meal (measured: "Dinner is served from 7:30
+    pm to 9:00 pm" scored 0.01 against it). "<lead-in> Dinner 07.30 pm 09.00
+    pm" scored 0.98. So each item is also offered with its lead-in.
+
+    An item starts at a line beginning with a list marker or a short line
+    starting with a capital; lines starting otherwise (a time, a lowercase
+    word) continue the current item; a long capitalised line is ordinary
+    prose and ends the list. Lines broken mid-sentence by a PDF therefore
+    never become "items" - that would hand the model sentence fragments,
+    which can drop a qualifier on the next line.
+    """
+    units: list[str] = []
+    for i, line in enumerate(lines):
+        if not re.search(r":\s*[-–]?\s*$", line):
+            continue
+        before = _prose_sentences("\n".join(lines[: i + 1]))
+        lead = before[-1] if before else line.strip()
+        items: list[list[str]] = []
+        for nxt in lines[i + 1 :]:
+            nxt = nxt.strip()
+            if not nxt:
+                continue
+            starts_item = bool(_ITEM_MARKER_RE.match(nxt)) or (
+                nxt[0].isupper() and len(nxt) <= _SHORT_ITEM_CHARS
+            )
+            # Two kinds of list. In a MARKED list (first item "a) ...") only a
+            # marker starts an item, and any other line continues the current
+            # item while that item has not finished its sentence ("... by
+            # the respective" / "School/Department, ..."). In a list of SHORT
+            # items ("Breakfast", "Lunch") a short capitalised line starts an
+            # item. In both, a line that cannot open a sentence (a time, a
+            # lowercase word) continues the item; anything else is prose and
+            # the list is over.
+            marked = bool(items) and bool(_ITEM_MARKER_RE.match(items[0][0]))
+            if marked:
+                starts_item = bool(_ITEM_MARKER_RE.match(nxt))
+            open_item = bool(items) and not re.search(r"[.!?]$", items[-1][-1])
+            if starts_item:
+                if len(items) >= _MAX_LIST_ITEMS:
+                    break
+                items.append([nxt])
+            elif items and (not nxt[0].isupper() or (marked and open_item)):
+                items[-1].append(nxt)
+            else:
+                break  # not a list, or the list has ended in prose
+        if len(items) < 2:
+            continue
+        for item in items:
+            text = flatten(" ".join(item))
+            if len(text) <= _MAX_SENTENCE_CHARS:
+                units.append(f"{lead} {text}")
+    return units
+
+
+@dataclass
+class _Layout:
+    """A passage cut into evidence units, respecting its structure.
+
+    `singles`  every single unit in reading order: prose sentences and table
+               rows. Scored first.
+    `runs`     stretches of consecutive prose sentences. Windows of 2-3
+               neighbouring sentences are built inside a run only.
+    `lead_ins` list items joined to their lead-in line (see _lead_in_units).
+    """
+
+    singles: list[str]
+    runs: list[list[str]]
+    lead_ins: list[str]
+
+
+def _layout(text: str) -> _Layout:
+    """Cut a passage into units, keeping table rows whole and on their own.
+
+    Ingestion writes each table row as one self-describing line. Such a row
+    is a unit by itself and is never joined to a neighbouring row in a
+    window: two rows side by side describe two different categories, and
+    the model read the pair as support for a claim that mixes them (measured:
+    "a CLAT rank in the top 2500 receives a 75% waiver" scored 0.87 against
+    the top-2500 row joined to the 2501-5000 row, and 0.00 against the
+    top-2500 row alone). Everything that is not a row is handled as prose,
+    with PDF line breaks flattened as before.
+    """
+    singles: list[str] = []
+    runs: list[list[str]] = []
+    prose: list[str] = []
+    lead_ins: list[str] = []
+
+    def close_prose() -> None:
+        if not prose:
+            return
+        sentences = _prose_sentences("\n".join(prose))
+        singles.extend(sentences)
+        if sentences:
+            runs.append(sentences)
+        lead_ins.extend(_lead_in_units(prose))
+        prose.clear()
+
+    for line in text.splitlines() or [text]:
+        if _SUBSECTION_RE.match(line.strip()):
+            # A numbered subsection heading ("5.2 Temporary withdrawal from
+            # the programme:") starts a new stretch, so no window joins the
+            # end of one rule to the start of the next.
+            close_prose()
+        if is_table_row(line):
+            close_prose()
+            singles.extend(_slice_long(flatten(line)))
+        else:
+            prose.append(line)
+    close_prose()
+    return _Layout(singles=singles, runs=runs, lead_ins=lead_ins)
+
+
 def split_sentences(text: str) -> list[str]:
-    """The passage as a list of sentences, after flattening whitespace.
+    """The passage as a list of single evidence units: sentences, and each
+    table row on its own.
 
     Anything too long to be a real sentence (a table, a list with no full
     stops) is cut into overlapping slices instead, so the model is never
     handed a wall of text and no part of it is dropped.
     """
-    out: list[str] = []
-    for piece in _SENTENCE_END_RE.split(flatten(text)):
-        piece = piece.strip()
-        if not piece:
-            continue
-        if len(piece) <= _MAX_SENTENCE_CHARS:
-            out.append(piece)
-            continue
-        # Slices start every _SLICE_STEP characters; the final slice is
-        # allowed to be short, and we stop once the end has been covered.
-        start = 0
-        while True:
-            out.append(piece[start : start + _SLICE_CHARS].strip())
-            if start + _SLICE_CHARS >= len(piece):
-                break
-            start += _SLICE_STEP
-    return out
+    return _layout(text).singles
 
 
 def sentence_windows(sentences: list[str], max_sentences: int = 3) -> list[str]:
@@ -239,12 +521,23 @@ def evidence_units(text: str, max_sentences: int = 3) -> list[str]:
     short passage's 2-sentence window can equal the whole passage, and
     repeated text would only cost time.
     """
-    # Windows are built from the sentences in their real order (before
-    # removing repeats), so a window only ever joins true neighbours.
-    raw = split_sentences(text)
-    sentences = _dedupe(raw)
-    windows = [w for w in _dedupe(sentence_windows(raw, max_sentences)) if w not in sentences]
-    return sentences + windows
+    layout = _layout(text)
+    sentences = _dedupe(layout.singles)
+    return sentences + _second_pass_units(layout, max_sentences, set(sentences))
+
+
+def _second_pass_units(layout: _Layout, max_sentences: int, seen: set[str]) -> list[str]:
+    """Windows of neighbouring prose sentences, then list items with their
+    lead-in, minus anything already scored.
+
+    Windows are built from the sentences in their real order (before removing
+    repeats), so a window only ever joins true neighbours - and only inside
+    one stretch of prose, never across a table row.
+    """
+    windows: list[str] = []
+    for run in layout.runs:
+        windows.extend(sentence_windows(run, max_sentences))
+    return [u for u in _dedupe(windows + layout.lead_ins) if u not in seen]
 
 
 def split_windows(
@@ -373,10 +666,16 @@ def combine_unit_results(results: list[NLIResult], threshold: float) -> NLIResul
         # Nothing decisive either way - report the strongest signal we saw.
         chosen = max(results, key=lambda r: max(r.entailment, r.contradiction))
 
+    # The strongest contradiction from prose alone, for the cross-section
+    # conflict rule (see NLIResult.conflict_strength).
+    prose = [r for r in results if not is_table_row(r.window)]
+    best_prose = max(prose, key=lambda r: r.contradiction) if prose else None
     return replace(
         chosen,
         strongest_contradiction=best_contra.contradiction,
         contradiction_window=best_contra.window,
+        prose_contradiction=best_prose.contradiction if best_prose else 0.0,
+        prose_contradiction_window=best_prose.window if best_prose else "",
     )
 
 
@@ -467,11 +766,13 @@ class NLIChecker:
         It only saves time on the common case of a claim drawn from one
         sentence.
         """
-        flat = flatten(premise)
-        if not flat:
+        # Line breaks are kept until the passage has been cut into units:
+        # they are what marks a table row or a list item. Each unit is
+        # flattened on its own.
+        if not flatten(premise):
             return NLIResult(label=NEUTRAL, entailment=0.0, neutral=1.0, contradiction=0.0)
 
-        quote = find_exact_quote(flat, hypothesis)
+        quote = find_exact_quote(premise, hypothesis)
         if quote is not None:
             return NLIResult(
                 label=ENTAILMENT,
@@ -481,21 +782,19 @@ class NLIChecker:
                 window=quote,
                 strongest_contradiction=0.0,
                 exact_quote=True,
+                prose_contradiction=0.0,
             )
 
         cfg = self.config.nli
         threshold = cfg.entailment_threshold
-        raw = split_sentences(flat)
-        sentences = _dedupe(raw)
+        layout = _layout(premise)
+        sentences = _dedupe(layout.singles)
         results = self._score_many(sentences, hypothesis)
         if any(r.entailment >= threshold for r in results):
             return combine_unit_results(results, threshold)
 
-        # Windows, built from the sentences in their real order so a window
-        # only joins true neighbours.
-        seen = set(sentences)
-        windows = [
-            w for w in _dedupe(sentence_windows(raw, cfg.max_window_sentences)) if w not in seen
-        ]
-        results += self._score_many(windows, hypothesis)
+        # Windows of neighbouring sentences, and list items with their
+        # lead-in line.
+        extra = _second_pass_units(layout, cfg.max_window_sentences, set(sentences))
+        results += self._score_many(extra, hypothesis)
         return combine_unit_results(results, threshold)

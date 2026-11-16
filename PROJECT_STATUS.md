@@ -3,10 +3,112 @@
 Detailed current state of the Policy Verification System. Written as a handoff
 document: it states what exists, what was measured, and what is not built yet.
 
-**Last updated:** 2026-11-11, after Phases 7 (interface) and 8 (evaluation harness).
+**Last updated:** 2026-11-16, after the audit and the first six improvement
+tasks. **Section 0 below is the current state.** Sections 1 onward describe
+the system as it was on 2026-11-11 and are kept for reference; where they
+disagree with section 0, section 0 is right.
 
 For the project overview see [`README.md`](README.md). For the ideas behind
-it see [`CONCEPTS.md`](CONCEPTS.md).
+it see [`CONCEPTS.md`](CONCEPTS.md). For the detailed task briefs see
+[`HANDOFF_PLAN.md`](HANDOFF_PLAN.md).
+
+---
+
+## 0. Current state (2026-11-16)
+
+### 0.1 What happened
+
+A full audit on 14 Nov found the system worked end to end but was not yet
+reliable: verification gave no accuracy gain over switching it off, 5 of 8
+unanswerable held-out questions were answered anyway, true quotes of the
+policy were being rejected, and claim-level precision and recall could not be
+reported at all. A roadmap was agreed and most of it is now done.
+
+### 0.2 Completed
+
+| Task | What changed | Main files |
+|---|---|---|
+| **Scoring** | Labelled claim set (85 claims, 8 kinds) and a verifier-only benchmark; 95% intervals on headline numbers; "verification on vs off" table printed after every run; scorer bug with `Rs.5000` fixed; result summaries committed | `claimset.py`, `eval/claims.jsonl`, `scripts/evaluate_verifier.py`, `evaluate.py` |
+| **Sentence-level checking** | Claims are checked against single sentences and 2-3 sentence windows instead of 900-character blocks; exact-quote shortcut; one order-independent rule for merging results; "conflicting sources" flag; the supporting sentence is stored; NLI runs in float32 (about 3x faster) | `verify/nli.py`, `verify/verifier.py`, `schema.py` |
+| **Hybrid search** | BM25 keyword search merged with embedding search by Reciprocal Rank Fusion | `indexing/bm25.py`, `retrieve.py`, `indexing/store.py` |
+| **Robust generation** | Replies constrained to a JSON schema; complete claims rescued from cut-off replies; whole passages shown to the model; reply limit raised to 1500 tokens; passages containing instructions aimed at the model are screened out | `llm.py`, `generate.py` |
+| **Correction display** | A refuted claim shows the policy sentence it conflicts with, quoted word for word | `app.py`, `scripts/ask.py`, `verifier.py` |
+| **Relevance gate** | After verification, the system checks that the kept claims answer the question (similarity plus one yes/no model call). True-but-off-topic claims are shown as such; if none answer the question, the system declines | `verify/relevance.py`, `pipeline.py`, `abstain.py` |
+| **Ingestion repair** | HTML tables kept whole, one self-describing row per line; Roman-numeral headings detected; site footer removed; `scripts/ingest.py --offline`; index rebuilt | `ingest/extract.py`, `ingest/normalize.py`, `indexing/chunk.py` |
+
+Label changes made with the ingestion repair, each checked against the policy
+text: `fp-010` now cites `srm/examination/XVII-result_passing_board_meeting`
+(the section holding the grace-mark rule); `num-016`, `xpol-001` and
+`xpol-005` now accept any scholarship table stating the 100% / 75% waiver.
+
+### 0.3 Measured results
+
+Tuning split, 33 questions. These are development numbers, not final ones:
+several settings were tuned on these same questions.
+
+| | Audit (14 Nov) | Now |
+|---|---|---|
+| Accuracy | 57.6% | 69.7% (95% interval 53-83%) |
+| Hallucination rate | 18.2% | 3.0% |
+| Unanswerable questions declined | 2 of 7 | 6 of 7 |
+| Answerable questions wrongly declined | 15.4% | 23.1% |
+| Mean seconds per question | 14.2 | 7.2 |
+| Accuracy, verification on vs off | equal | 69.7% vs 66.7% |
+| Hallucination, verification on vs off | 18.2% vs 21.2% | 3.0% vs 18.2% |
+
+Verifier alone, 85 labelled claims: precision 91.7%, recall 93.6% (was
+91.5% / 91.5%); verbatim quotes 15 of 15 (was 12 of 15); about 1.0 s per
+claim (was 2.9 s).
+
+On 49 fresh questions, measured after the relevance gate and before the
+ingestion repair: accuracy 85.7%, hallucination 4.1%, unanswerable declined
+7 of 9.
+
+| | |
+|---|---|
+| **Tests** | 427 passing, no GPU / model / network required |
+| **Lint** | ruff clean |
+| **Corpus** | 6 documents, 212 sections, 192 indexed sections, 262 chunks |
+| **Largest section** | 10,395 characters (was about 42,000) |
+
+### 0.4 Known weaknesses
+
+- **Wrongly declined answers rose to 23.1% (6 of 26)** after the ingestion
+  repair. Scholarship answers such as "the maximum waiver is 100%" are too
+  general for any single table row to prove, so the verifier rejects them.
+  One false-premise question (`fp-011`) is blocked by the relevance gate.
+- **Right number, wrong table row** is still accepted by the verifier in 4 of
+  6 benchmark claims.
+- **Close-but-not-an-answer claims** still pass the relevance gate (room-change
+  rules for "how do I apply for a room change").
+- **The correction sentence is not always a natural correction**; it is the
+  sentence the NLI model scored as most contradictory.
+- **Confidence is uncalibrated** and the pass marks are still defaults.
+- The held-out split has been viewed once and must not be used for design.
+
+### 0.5 Remaining roadmap
+
+| # | Task | Status |
+|---|---|---|
+| 1 | Fix the scholarship rejections: let a claim be checked against several table rows of one section together, and look at the false-premise block | Proposed, not started |
+| 2 | Calibration and thresholds: temperature-scale the NLI score, choose pass marks from a risk-coverage curve on tuning data, remove the retrieval-score gate that never fires | Not started |
+| 3 | Final evaluation: add about 20 new held-out questions written by a teammate, run the held-out sets once, build the "what each part adds" table | Waiting on the questions |
+| 4 | Optional: compare with MiniCheck; scope and date labels per document; a few tests that use the real models; pin dependency versions; bring sections 1-10 of this file and the README up to date | Not started |
+
+Dropped: the separate "tie numbers to the supporting sentence" task. Most of
+its benefit depended on the table repair, and item 1 covers what is left.
+
+### 0.6 Commands
+
+```bash
+pytest                                        # 427 tests
+python scripts/ingest.py --offline            # re-process data/raw without downloading
+python scripts/build_index.py
+python scripts/validate_evalset.py            # labels still valid
+python scripts/evaluate_verifier.py           # verifier alone, about 90 s, no Ollama
+python scripts/evaluate.py --split tuning     # end to end, about 4 min, needs Ollama
+streamlit run app.py
+```
 
 ---
 

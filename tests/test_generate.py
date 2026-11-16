@@ -219,6 +219,49 @@ def test_claims_with_only_fabricated_citations_survive_with_none_left():
     assert unknown == ["srm/x/made-up"]
 
 
+def _section(citation: str, text: str) -> RetrievedChunk:
+    retrieved = _retrieved(citation)
+    return RetrievedChunk(
+        chunk=retrieved.chunk.model_copy(update={"text": text}), score=0.9, rank=0
+    )
+
+
+SUMMER = _section(
+    "srm/attendance/3.5-summer_semester",
+    "Summer courses run for eight weeks.\n3.7 Adding and dropping courses\nA student may add a course.",
+)
+
+
+def _cite(citation: str, chunks: list[RetrievedChunk]) -> tuple[list[str], list[str]]:
+    draft = DraftAnswer.model_validate({"claims": [{"text": "c", "citation_ids": [citation]}]})
+    cleaned, unknown = drop_unknown_citations(draft, chunks)
+    return cleaned.claims[0].citation_ids, unknown
+
+
+def test_a_clause_number_inside_a_passage_is_read_as_that_passage():
+    assert _cite("srm/attendance/3.7", [SUMMER, _retrieved()]) == (
+        ["srm/attendance/3.5-summer_semester"], [])
+    assert _cite("srm/attendance/3.7 Adding and dropping courses", [SUMMER])[0] == [
+        "srm/attendance/3.5-summer_semester"]
+
+
+def test_a_bare_section_number_is_read_as_that_section():
+    assert _cite("srm/attendance/3.5", [SUMMER])[0] == ["srm/attendance/3.5-summer_semester"]
+
+
+def test_a_citation_is_not_repaired_when_it_is_not_certain():
+    other = _section("srm/attendance/3.6-other", "3.7 Adding and dropping courses again")
+    # Two sections hold a "3.7" line: ambiguous, so it stays unknown.
+    assert _cite("srm/attendance/3.7", [SUMMER, other]) == ([], ["srm/attendance/3.7"])
+    # Another document, a longer clause number, a number with no such line,
+    # and a slug that is not a clause number at all.
+    for citation in ("srm/residence/3.7", "srm/attendance/3.7.1", "srm/attendance/9.9",
+                     "srm/attendance/99-invented-section"):
+        assert _cite(citation, [SUMMER]) == ([], [citation])
+    # "3.71" in the text is not clause 3.7.
+    assert _cite("srm/attendance/3.7", [_section("srm/attendance/3.5-x", "3.71 Something")])[0] == []
+
+
 # ---------------------------------------------------------------------------
 # generate_claims
 # ---------------------------------------------------------------------------

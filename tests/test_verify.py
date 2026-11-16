@@ -538,6 +538,10 @@ class ByPremiseNLI:
         self.results = results
 
     def check(self, premise: str, hypothesis: str) -> NLIResult:
+        # The verifier puts the section heading in front of the chunk text
+        # (premise_with_heading); key on the chunk text itself.
+        if premise not in self.results:
+            premise = premise.split("\n", 1)[-1]
         return self.results[premise]
 
 

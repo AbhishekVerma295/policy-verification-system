@@ -40,6 +40,15 @@ WHEN TWO CITED SECTIONS DISAGREE
     sentences so the reader can see the disagreement for themselves.
     Contradictions inside ONE section never count - a section that states
     a rule and then its exception is normal policy writing, not a conflict.
+    Nor do contradictions from TABLE ROWS: a row of another table is about
+    another category (another exam, another score band), and counting it
+    withheld true scholarship claims as "conflicts" once tables were stored
+    one row per line (see nli.NLIResult.conflict_strength).
+
+THE SECTION HEADING IS PART OF THE PREMISE
+    The first chunk of a section is checked with its own heading in front
+    (premise_with_heading), because some sections only say who they apply
+    to in the heading ("For all I Year Students:").
 """
 
 from __future__ import annotations
@@ -55,7 +64,7 @@ from policyverify.schema import (
     VerdictStatus,
 )
 from policyverify.verify.citation import CitationCheck, check_citations
-from policyverify.verify.nli import NLIChecker, NLIResult
+from policyverify.verify.nli import NLIChecker, NLIResult, is_table_row
 from policyverify.verify.numeric import check_numbers
 
 
@@ -106,20 +115,24 @@ def _find_conflict(
     if len(by_citation) < 2:
         return None
 
+    # The contradiction used here is `conflict_strength`, which leaves out
+    # table rows: a row about a different category (another exam, another
+    # score band) is not a source disagreeing with the claim. See
+    # nli.NLIResult.conflict_strength for the measured case.
     supporters: list[_Scored] = []
     against: list[_Scored] = []
     for group in by_citation.values():
         top_entail = max(group, key=lambda s: (s.result.entailment, s.chunk_id))
-        top_contra = max(group, key=lambda s: (s.result.max_contradiction, s.chunk_id))
+        top_contra = max(group, key=lambda s: (s.result.conflict_strength, s.chunk_id))
         if top_entail.result.entailment >= threshold:
             supporters.append(top_entail)
-        elif top_contra.result.max_contradiction >= conflict_threshold:
+        elif top_contra.result.conflict_strength >= conflict_threshold:
             against.append(top_contra)
 
     if not supporters or not against:
         return None
     support = max(supporters, key=lambda s: (s.result.entailment, s.chunk_id))
-    contra = max(against, key=lambda s: (s.result.max_contradiction, s.chunk_id))
+    contra = max(against, key=lambda s: (s.result.conflict_strength, s.chunk_id))
     return support, contra
 
 
@@ -176,6 +189,47 @@ def policy_says(verdict: ClaimVerdict) -> list[str]:
     return []
 
 
+def premise_with_heading(chunk) -> str:
+    """The chunk's text with its own section heading as a first line.
+
+    Some sections only make sense under their heading. "For all I Year
+    Students:" is the heading of a section whose items say "Full fee (except
+    the cancellation fee of Rs.5000/-) will be refunded if a student wishes to
+    withdraw ..." - the text never says WHO, so the true claim "a first-year
+    student who withdraws ... loses Rs.5000" scored 0.00 against the item
+    alone and 0.98 with the heading in front. The heading is part of the
+    policy, not something we made up, so letting the checker read it is fair.
+
+    Only the FIRST chunk of a section gets it, because that is where the
+    heading really stands. A later chunk can start mid-section, or carry on
+    into a following subsection that ingestion did not split off: chunk #1
+    of the summer-semester section is mostly "3.7 Adding and dropping
+    courses", and with "Summer Semester:" in front of it the false claim
+    "students may withdraw from summer courses in the first two weeks" was
+    supported. Only the last heading is added (the document title adds
+    nothing), it is not repeated if the text already starts with it, and
+    sections that are table rows are left alone because each row already
+    carries its context.
+    The NLI unit splitter treats the heading as the lead-in of any list that
+    follows it (nli._lead_in_units).
+    """
+    text = chunk.text
+    heading = (getattr(chunk, "section_path", "") or "").split(" > ")[-1].strip()
+    if not heading:
+        return text
+    part = (getattr(chunk, "chunk_id", "") or "").rpartition("#")[2]
+    if part.isdigit() and part != "0":
+        return text
+    first_line = next((ln for ln in text.splitlines() if ln.strip()), "")
+    if is_table_row(first_line):
+        return text
+    if text.lstrip().lower().startswith(heading.rstrip(":").lower()):
+        return text
+    if not heading.endswith(":"):
+        heading += ":"
+    return f"{heading}\n{text}"
+
+
 def _no_citation_verdict(claim: Claim) -> ClaimVerdict:
     """A claim with no citation at all cannot be checked, so it is not kept."""
     return ClaimVerdict(
@@ -227,7 +281,7 @@ def verify_claim(
     # Every cited chunk is scored once. The citation ID travels with each
     # result because the conflict rule below compares SECTIONS, not chunks.
     scored = [
-        _Scored(check.citation_id, chunk.chunk_id, nli.check(chunk.text, claim.text))
+        _Scored(check.citation_id, chunk.chunk_id, nli.check(premise_with_heading(chunk), claim.text))
         for check in resolved
         for chunk in check.chunks
     ]
@@ -275,7 +329,7 @@ def verify_claim(
         checks.conflict = True
         checks.evidence_text = support.result.window or None
         checks.evidence_chunk_id = support.chunk_id
-        checks.contradicting_text = against.result.max_contradiction_text or None
+        checks.contradicting_text = against.result.conflict_text or None
         checks.contradicting_chunk_id = against.chunk_id
         return ClaimVerdict(
             claim=claim,
@@ -289,8 +343,8 @@ def verify_claim(
                 f"The cited sources disagree. {support.citation_id} supports this "
                 f"(confidence {support.result.entailment:.2f}): "
                 f"{_quote(support.result.window)} But {against.citation_id} "
-                f"contradicts it (confidence {against.result.max_contradiction:.2f}): "
-                f"{_quote(against.result.max_contradiction_text)}"
+                f"contradicts it (confidence {against.result.conflict_strength:.2f}): "
+                f"{_quote(against.result.conflict_text)}"
             ),
         )
 

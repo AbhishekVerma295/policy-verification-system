@@ -257,6 +257,41 @@ def salvage_claims(raw: str) -> list[Claim]:
     return claims
 
 
+_CLAUSE_RE = re.compile(r"\d+(?:\.\d+)+")
+
+
+def repair_citation(citation: str, chunks: list[RetrievedChunk]) -> str | None:
+    """The retrieved section an invented clause-number citation really points at.
+
+    A passage often contains numbered clauses of its own: the passage for
+    "srm/attendance/3.5-summer_semester" also holds "3.7 Adding and dropping
+    courses". The model then cites "srm/attendance/3.7", which is not a
+    section ID, and a true claim lost its citation and was thrown away.
+
+    The citation is repaired only when it cannot be anything else: same
+    document, a dotted clause number ("3.7", "5.2"), and exactly ONE retrieved
+    section has a line starting with that number. Anything less certain stays
+    unknown and is reported as before. The repair adds no trust - the claim
+    still has to be supported by the text of the section it now cites.
+    """
+    document, _, slug = citation.rpartition("/")
+    number = _CLAUSE_RE.match(slug.strip())
+    if not document or number is None:
+        return None
+    heading = re.compile(rf"^\s*{re.escape(number.group(0))}(?![\d.]*\d)[\s.:)]", re.MULTILINE)
+    matches = {
+        retrieved.chunk.citation_id
+        for retrieved in chunks
+        if retrieved.chunk.citation_id.rpartition("/")[0] == document
+        and (
+            heading.search(retrieved.chunk.text)
+            # "srm/attendance/3.5" for the section "3.5-summer_semester"
+            or retrieved.chunk.citation_id.rpartition("/")[2].startswith(number.group(0) + "-")
+        )
+    }
+    return matches.pop() if len(matches) == 1 else None
+
+
 def drop_unknown_citations(
     draft: DraftAnswer, chunks: list[RetrievedChunk]
 ) -> tuple[DraftAnswer, list[str]]:
@@ -275,6 +310,13 @@ def drop_unknown_citations(
         for citation in claim.citation_ids:
             if citation in known:
                 kept.append(citation)
+                continue
+            repaired = repair_citation(citation, chunks)
+            if repaired is not None:
+                logger.info("citation %s read as %s (clause inside that passage)",
+                            citation, repaired)
+                if repaired not in kept:
+                    kept.append(repaired)
             else:
                 unknown.append(citation)
         cleaned.append(Claim(text=claim.text, citation_ids=kept))
