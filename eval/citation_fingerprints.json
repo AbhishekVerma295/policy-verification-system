@@ -107,11 +107,25 @@
       "xpol-008"
     ]
   },
+  "srm/code_of_conduct/consequence": {
+    "chars": 1035,
+    "sha256": "5225ae681ff2eee775964e2a3eff1a8371a8e86a73735e17137a70b459dc3259",
+    "used_by": [
+      "un-014"
+    ]
+  },
   "srm/code_of_conduct/disciplinary_action_policy": {
     "chars": 465,
     "sha256": "cdf776ec42cc07e3522e3748a86e155984cf0402483fffc9c754e4eb693b3b7e",
     "used_by": [
       "fp-009"
+    ]
+  },
+  "srm/code_of_conduct/or_as_a_group": {
+    "chars": 6579,
+    "sha256": "4cf81de2818cedca77ea5a3cc20c7d478ab801d168bbc27f7bd5ba6c1b2ae445",
+    "used_by": [
+      "un-014"
     ]
   },
   "srm/examination/XVII-result_passing_board_meeting": {
@@ -235,6 +249,13 @@
       "num-016",
       "xpol-001",
       "xpol-005"
+    ]
+  },
+  "srm/scholarship/2-diversity_scholarship": {
+    "chars": 3290,
+    "sha256": "5f8812625d24afbe77a1b28a8dbe2c73958adc8e1861ac78c4f5d4fff51883bc",
+    "used_by": [
+      "un-010"
     ]
   },
   "srm/scholarship/3-mat_score": {

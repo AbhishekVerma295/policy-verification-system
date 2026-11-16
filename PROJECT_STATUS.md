@@ -110,6 +110,13 @@ a wrong answer that verification rightly stopped (`tm-34`, `tm-36`).
 `tm-04` gave the right fine but cited the wrong section, and the verifier
 accepted it. No false statement was shown as verified.
 
+Label correction (16 Nov, after the run): `un-010` and `un-014` in the
+original 31 were wrongly labelled unanswerable (the policies state the
+scholarship deadline and a dress code). Re-scoring the same saved answers
+with corrected labels: accuracy 74.2% (unchanged), hallucination 3.2% (was
+6.5%), unanswerable declined 6 of 6, wrongly declined 5 of 25. File:
+`eval/results/run-20261116-104643.relabelled.summary.json`.
+
 Not done: the full "what each part adds" table. Only verification on/off
 was measured.
 

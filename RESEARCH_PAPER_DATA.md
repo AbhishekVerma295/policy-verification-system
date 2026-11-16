@@ -42,6 +42,33 @@ changed after the final questions were seen.
 Combined over all 71 held-out questions (computed from the two rows above):
 accuracy 54/71 = 76.1%, hallucination 2/71 = 2.8%, unanswerable declined 13/14.
 
+### 1.2a Run B after correcting two wrong labels (use these for Run B)
+
+Two labels in the original held-out set were found to be wrong (details in
+section 2.6). The saved answers of Run B were scored again against the
+corrected labels; **no model was re-run**. File:
+`eval/results/run-20261116-104643.relabelled.summary.json`.
+
+| Metric | Run B as first scored | Run B, corrected labels |
+|---|---|---|
+| Overall accuracy | 74.2% (23/31) | **74.2%** [57-86] (23/31) |
+| Hallucination rate | 6.5% (2/31) | **3.2%** [1-16] (1/31) |
+| Wrong when answering | 20.0% (4 of 20) | 15.0% [5-36] (3 of 20) |
+| Correct abstention | 87.5% (7/8) | 100% (6/6) |
+| False abstention | 17.4% (4/23) | 20.0% (5/25) |
+| Citation accuracy | 89.5% | 90.0% |
+| Accuracy, verification on vs off | 74.2% vs 67.7% | 74.2% vs 71.0% |
+| Hallucination, verification on vs off | 6.5% vs 25.8% | 3.2% vs 19.4% |
+
+What moved: `un-014` (dress code) went from "answered an unanswerable
+question" to correct, and `un-010` (scholarship deadline) went from a correct
+decline to a wrong decline. Accuracy is unchanged because the two cancel.
+Corrected category scores: numeric 6/8, negation_exception 7/7,
+unanswerable 5/5, cross_policy 3/5, false_premise 2/6. With the corrected
+labels, the combined 71 held-out questions give accuracy 54/71 = 76.1% and
+hallucination 1/71 = 1.4%. Sections 1.3, 1.4 and 1.5 below show Run B as
+first scored.
+
 ### 1.3 Outcome counts (the end-to-end "confusion matrix")
 
 Every question ends in exactly one outcome.
@@ -456,12 +483,16 @@ Known flaws in the question set (report them, do not hide them):
 The two hallucinations in Run B are `fp-012` (kept a claim containing "exempt")
 and `un-014` (answered an unanswerable question).
 
-Label problems found in this older set: `un-010` is labelled unanswerable
-("no scholarship application deadline is stated"), but the teammate's `tm-40`
-shows the scholarship timeline does state 10th July. The system declined
-`un-010`, so it was scored correct on a label that is wrong. `un-014` (dress
-code) is also doubtful: the code of conduct does mention formal dress. Both
-are left as scored; mention this as a limitation of the older set.
+Label corrections made on 16 Nov, after Run B: `un-010` was labelled
+unanswerable ("no scholarship application deadline is stated"), but the
+scholarship timeline states 10th July (found through the teammate's `tm-40`);
+it is now answerable, and the system's decline counts as a false abstention.
+`un-014` (dress code) was labelled unanswerable, but the code of conduct says
+to follow a proper, formal dress code; it is now answerable, and the system's
+answer counts as correct. The table above shows the outcomes as first scored;
+section 1.2a gives the corrected metrics. Changing held-out labels after a run
+is a limitation and should be stated in the paper: both changes follow from
+the policy text, and one helps the system while the other hurts it.
 
 The tuning questions (33) and all 85 claims are in `eval/adversarial.jsonl`
 and `eval/claims.jsonl`.
