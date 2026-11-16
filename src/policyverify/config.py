@@ -184,7 +184,12 @@ class NLIConfig(BaseModel):
 
     model_name: str = "MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli"
     device: str = "cpu"
-    # An entailment score below this is not treated as support.
+    # An entailment score below this is not treated as support. Checked with
+    # scripts/calibrate.py on the 44 tuning claims (Nov 2026): the scores are
+    # nearly all near 0 or near 1 (19 below 0.2, 23 above 0.8, 2 between),
+    # so any value from 0.3 to 0.5 accepts exactly the same claims, and
+    # higher values only start trading true claims for the single false one
+    # in the 0.6-0.7 band. Left at 0.5; see abstention.min_claim_score.
     entailment_threshold: float = 0.5
     # How strongly one cited section must contradict a claim, while another
     # cited section supports it, before the claim is withheld as "the sources
@@ -223,12 +228,24 @@ class AbstentionConfig(BaseModel):
     questions would only prove it works on the questions you tuned it for.
     """
 
+    # A SUPPORTED claim is kept only if its score is at least this. Checked
+    # with scripts/calibrate.py on the tuning claims (Nov 2026) and left at
+    # 0.5: 23 of the 25 accepted tuning claims score above 0.8; raising it to
+    # 0.7 would drop the one false claim accepted (scored 0.64) but also a
+    # true one (0.53), and replaying the latest tuning run, it would turn one
+    # correct answer (num-016, best claim 0.69) into a refusal while the one
+    # hallucinated answer scored 0.96 and would stay. One claim either way is
+    # not evidence enough to move it. Equal to nli.entailment_threshold, so
+    # in practice it is that threshold that decides.
     min_claim_score: float = 0.5
     # If fewer than this many claims survive checking, abstain entirely rather
     # than giving a half-answer.
     min_supported_claims: int = 1
-    # If the best retrieved passage is weaker than this, the corpus probably
-    # does not cover the question at all.
+    # RETIRED - no longer read by anything. It was "decline if the best
+    # retrieved passage scores below this"; measured, it never fired and no
+    # value separates answerable from unanswerable questions (see the note
+    # in abstain.decide). Kept only so config.yaml files that still set it
+    # load without error; the line can be deleted from config.yaml.
     min_retrieval_score: float = 0.25
 
 
@@ -245,6 +262,15 @@ class RelevanceConfig(BaseModel):
     All three thresholds were chosen on the TUNING questions and the fresh
     questions only - never the held-out half - so they are somewhat
     optimistic for those same questions. See verify/relevance.py.
+
+    Re-checked in Nov 2026 by replaying the latest tuning run: every answer
+    that reached the gate had a best similarity between 0.565 and 0.811, so
+    the language model decided all of them and neither cut-off was used.
+    Two unanswerable questions the judge rightly rejected scored 0.75 and
+    0.81, so lowering `similarity_accept` would let them through; raising
+    `similarity_reject` past 0.59 would block a correct answer. The fallback
+    was never needed in that run, so there is nothing to tune it on. All
+    three are left as they were.
     """
 
     # False = gate off: every verified claim counts as relevant, exactly as

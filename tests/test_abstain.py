@@ -108,9 +108,9 @@ def test_no_claim_disappears_even_when_abstaining():
     assert len(decision.removed) == 2
 
 
-def test_claims_are_removed_not_deleted_on_weak_retrieval():
+def test_claims_are_removed_not_deleted_when_nothing_was_retrieved():
     verdicts = [_verdict()]
-    decision = decide(verdicts, [_retrieved(score=0.05)], load_config())
+    decision = decide(verdicts, [], load_config())
     assert decision.abstained
     assert len(decision.removed) == 1, "the claim must still be visible"
 
@@ -151,12 +151,16 @@ def test_abstains_when_nothing_was_retrieved():
     assert "No relevant policy passages" in decision.reason
 
 
-def test_abstains_when_retrieval_is_too_weak():
-    """If the corpus does not cover the question, claims built on it were not
-    grounded in anything worth standing behind."""
-    decision = decide([_verdict()], [_retrieved(score=0.01)], load_config())
-    assert decision.abstained
-    assert "does not appear to cover" in decision.reason
+def test_a_low_retrieval_score_alone_no_longer_forces_abstention():
+    """The retrieval-score gate was removed after measuring that it never
+    fired and could not separate answerable from unanswerable questions (see
+    abstain.decide). A verified claim is judged on its verification, not on
+    the passage's similarity score - even with the retired setting raised."""
+    config = load_config()
+    config.abstention.min_retrieval_score = 0.9
+    decision = decide([_verdict()], [_retrieved(score=0.01)], config)
+    assert not decision.abstained
+    assert len(decision.kept) == 1
 
 
 def test_abstains_when_the_model_produced_no_claims():

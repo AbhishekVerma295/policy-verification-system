@@ -143,16 +143,20 @@ def test_abstains_when_the_model_makes_no_claims():
     assert answer.reason
 
 
-def test_abstains_when_retrieval_is_too_weak():
+def test_weak_retrieval_is_left_to_verification():
+    """The retrieval-score gate is retired (see abstain.decide): a weakly
+    matching passage no longer forces a refusal by itself. A claim the
+    passage does not support is still removed by verification."""
     answer = answer_question(
         "Something the corpus does not cover.",
         config=load_config(),
         store=StubStore(score=0.01),
         llm=_llm_saying("An unsupported assertion."),
-        nli=StubNLI(),
+        nli=StubNLI(label=NEUTRAL, entailment=0.05),
     )
     assert answer.abstained
-    assert "does not appear to cover" in answer.reason
+    assert "does not appear to cover" not in (answer.reason or "")
+    assert len(answer.claims_removed) == 1
 
 
 def test_abstains_when_nothing_survives_verification():
