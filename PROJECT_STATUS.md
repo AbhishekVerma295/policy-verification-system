@@ -10,8 +10,8 @@ system works in the code today; they quote no results of their own, so where
 a number appears in both places, section 0 is right.
 
 For the project overview see [`README.md`](README.md). For the ideas behind
-it see [`CONCEPTS.md`](CONCEPTS.md). For the detailed task briefs see
-[`HANDOFF_PLAN.md`](HANDOFF_PLAN.md).
+it see [`CONCEPTS.md`](CONCEPTS.md). For the final results in paper form see
+[`RESEARCH_PAPER_DATA.md`](RESEARCH_PAPER_DATA.md).
 
 ---
 
@@ -144,7 +144,7 @@ was measured.
 |---|---|---|
 | 1 | Fix the wrongly declined answers | Done |
 | 2 | Calibration and thresholds | Done |
-| 3 | Final evaluation: add the teammate's new held-out questions, run the held-out sets once, build the "what each part adds" table | 20 questions received 16 Nov; draft answer key in `eval/final_questions.draft.jsonl`, not yet approved; not yet run |
+| 3 | Final evaluation: add the teammate's new held-out questions, run the held-out sets once, build the "what each part adds" table | Done 16 Nov: 40 teammate questions with the teammate's own answer key (`eval/final_heldout.jsonl`), results in 0.3a. The "what each part adds" table is not done. A further 50-question set (`eval_docs/SRM_Policy_QA_Independent_Test_Set_v2.md`) is ready but not yet run |
 | 4 | "Right number, wrong table row" in the verifier | Not started; deliberately held until after the final run |
 | 5 | Optional: compare with MiniCheck; scope and date labels per document; a few tests that use the real models; pin dependency versions | Not started |
 
@@ -175,8 +175,8 @@ confidence per claim, removes what it cannot stand behind, and declines to
 answer when too little survives.
 
 Sections 1 onward were rewritten on 2026-11-16 to match the code as of commit
-`e34ecbc` (plus the calibration work that is in progress, which is not
-described here). Anything measured is quoted only in section 0 above, or in
+`e34ecbc`; the calibration work and the final evaluation that followed are
+noted where they change something. Anything measured is quoted only in section 0 above, or in
 `eval/results/*.summary.json`; this part of the file describes how things
 work, not how well.
 
@@ -185,7 +185,7 @@ work, not how well.
 | **Pipeline** | question, retrieve, generate, verify, relevance gate, decide, `Answer` |
 | **Implemented** | everything in section 4 |
 | **Planned, not built** | see section 0.5 (roadmap) and section 7.3 |
-| **In progress** | calibration of the pass marks (not documented here until it lands) |
+| **Calibration** | checked, thresholds kept; retrieval-score gate removed (`scripts/calibrate.py`) |
 | **Corpus** | 6 documents, 212 parsed sections, 192 indexed sections, 262 chunks (counted on 2026-11-16 from `data/processed/`) |
 | **Labelled question set** | 64 questions, `eval/adversarial.jsonl` (33 tuning, 31 held-out) |
 | **Labelled claim set** | 85 claims, `eval/claims.jsonl` |
@@ -324,9 +324,10 @@ Settings that matter for the newer parts:
   `max_window_sentences` (3), `batch_size` (16).
 - `relevance`: `enabled`, `similarity_accept` (0.85), `similarity_reject`
   (0.55), `similarity_fallback` (0.60), `judge_max_claims` (6).
-- `abstention`: `min_claim_score`, `min_supported_claims`,
-  `min_retrieval_score`. These are still the original reasoned defaults;
-  calibration of them is in progress and is not described here.
+- `abstention`: `min_claim_score` (0.5), `min_supported_claims` (1). Both were
+  checked on a risk-coverage curve and kept. `min_retrieval_score` is still
+  read from `config.yaml` but no longer used: the gate was removed after it
+  was measured never to fire.
 
 The values above are the defaults in `config.py` on 2026-11-16 and may change
 as calibration lands. `Config.fingerprint()` summarises the settings that
@@ -557,8 +558,8 @@ those same questions.
 - **`abstain.py`** - two separate decisions. `should_keep()` decides which
   claims survive (SUPPORTED *and* at or above `min_claim_score` *and* not marked
   off topic by the relevance gate; NEUTRAL means the evidence did not settle it,
-  which is not the same as true). `decide()` first checks retrieval strength
-  (no passages, or best score below `min_retrieval_score`, means decline),
+  which is not the same as true). `decide()` first checks that something was
+  retrieved at all (no passages means decline),
   then partitions the verdicts and declines if fewer than
   `min_supported_claims` survive. The decline reason says which of three things
   happened: claims were true but off topic, claims were contradicted, or
@@ -885,7 +886,7 @@ in an older version of this file; it was not re-checked for this rewrite.
 - `llm.timeout_seconds` is applied to the Ollama client, and `llm.max_tokens`
   caps reply length (see section 6).
 - `TEAM.md` - the split between three people; `STUDY_GUIDE.md` - review prep;
-  `HANDOFF_PLAN.md` - the detailed task briefs for the roadmap.
+  `RESEARCH_PAPER_DATA.md` - results, datasets and methodology for the paper.
 
 ### 7.3 Planned, not built
 
@@ -895,8 +896,9 @@ convenience; nothing in this table exists yet:
 | Item | Status |
 |---|---|
 | Check a claim against several table rows of one section together (scholarship rejections) | proposed |
-| Calibration: temperature-scale the NLI score, pick pass marks from a risk-coverage curve | in progress; not described here |
-| Final evaluation on the held-out sets and new teammate-written questions; the "what each part adds" table | waiting on the questions |
+| Calibration: temperature-scale the NLI score, pick pass marks from a risk-coverage curve | done; thresholds kept (section 0) |
+| Final evaluation on the held-out sets and new teammate-written questions | done (section 0.3a) |
+| The "what each part adds" table | not done |
 | Comparison with MiniCheck | optional, not started |
 | Scope and date labels per document | optional, not started |
 | A few tests that run the real models | optional, not started |
@@ -931,10 +933,10 @@ table row (section 0.4).
 pattern list and the model can still be talked round; verification does not
 catch a planted passage that is itself a passage in the corpus.
 
-**Abstention thresholds are uncalibrated.** `min_claim_score`,
-`min_supported_claims` and `min_retrieval_score` are the original reasoned
-defaults. Calibration is in progress. The retrieval-score check is also listed
-in section 0.5 as one that never fires in practice.
+**Abstention thresholds rest on little data.** `min_claim_score` and
+`min_supported_claims` were checked on a risk-coverage curve and kept, but on
+only 44 tuning claims. The retrieval-score check was removed because it never
+fired.
 
 **Heading noise may remain.** The chunker drops contents entries, bare titles
 and unfinished fragments, but sections were not re-audited line by line after
@@ -990,9 +992,9 @@ c3c1741  2026-09-27  Phase 6: adversarial question set
 8d6d656  2026-09-25  Phase 5: abstention and transparent correction
 ```
 
-Older history (Phases 0-4) is in `git log`. Work in progress on calibration
-(`config.py`, `abstain.py`, a new `calibration.py`) is not yet committed and is
-not described in this file.
+Older history (Phases 0-4) is in `git log`. Calibration (`calibration.py`,
+`scripts/calibrate.py`), the final held-out evaluation and the label
+corrections are committed and summarised in section 0.
 
 ---
 

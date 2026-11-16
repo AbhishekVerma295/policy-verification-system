@@ -369,10 +369,9 @@ class VectorStore:
         WHY THIS EXISTS: hybrid retrieval can return a chunk that only the
         keyword search found, so the embedding search never gave it a score.
         But `RetrievedChunk.score` has one meaning everywhere - the cosine
-        similarity of the passage to the question, in [0, 1] - because the
-        abstention gate compares it with `min_retrieval_score` and the app
+        similarity of the passage to the question, in [0, 1] - because the app
         shows it to the user. A made-up number from the keyword side would
-        quietly break both. So we look up the chunk's stored embedding and
+        quietly mislead. So we look up the chunk's stored embedding and
         compute the same similarity the embedding search would have.
 
         The stored vectors and the query vector are both normalised to length

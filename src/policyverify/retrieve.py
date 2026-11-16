@@ -49,9 +49,8 @@ HOW THE MERGE WORKS: RECIPROCAL RANK FUSION
 WHAT `score` MEANS AFTER THE MERGE
     Unchanged: the cosine similarity of the passage to the question. The
     fused number is used only to decide the ORDER. This matters because
-    abstain.py compares the best `score` with `min_retrieval_score`, and the
-    app shows it as a similarity - neither would make sense of an RRF number
-    like 0.03. A passage only the keyword search found gets its similarity
+    the app shows it as a similarity, which would make no sense of an RRF
+    number like 0.03. A passage only the keyword search found gets its similarity
     computed from its stored embedding (VectorStore.similarities). `rank` is
     the position in the final, merged order, so results may come back with
     a lower-scoring passage above a higher-scoring one. That is intended.

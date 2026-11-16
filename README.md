@@ -56,7 +56,7 @@ Further reading in this repository:
 |---|---|
 | [`CONCEPTS.md`](CONCEPTS.md) | The ideas behind the system - RAG, embeddings, NLI, abstention - explained from scratch |
 | [`PROJECT_STATUS.md`](PROJECT_STATUS.md) | Section 0: current state, measured results, known weaknesses, roadmap. Later sections: how every part works, and findings worth keeping |
-| [`HANDOFF_PLAN.md`](HANDOFF_PLAN.md) | The detailed task briefs for the roadmap |
+| [`RESEARCH_PAPER_DATA.md`](RESEARCH_PAPER_DATA.md) | Final results, datasets and evaluation methodology, for the research paper (Word copy alongside) |
 | [`data/manifest.yaml`](data/manifest.yaml) | The corpus: every source URL, with the reasoning for each pick |
 
 ---
@@ -465,8 +465,8 @@ short:
   accepted.
 - A claim that is close to the question but not an answer can still pass the
   relevance gate.
-- The confidence numbers are not yet calibrated and the pass marks are still
-  the original defaults (calibration is in progress).
+- The pass marks were checked against a risk-coverage curve and kept, but
+  that check rests on only 44 tuning claims (`scripts/calibrate.py`).
 - Prompt-injection protection (screening passages, delimiters, the schema) is
   partial.
 - It is one institution, one small model (`qwen3:4b`), and small evaluation
@@ -617,9 +617,11 @@ tuning half unless a file says otherwise.
   intervals, a "verification on vs off" comparison, and drift detection on the
   cited sections
 
-**In progress**
-
-- Calibration of the confidence scores and pass marks
+- Calibration check of the confidence scores and pass marks
+  (`scripts/calibrate.py`); the retrieval-score gate was removed after it
+  was measured never to fire
+- Final held-out evaluation on 40 teammate-written questions (results in
+  `PROJECT_STATUS.md` section 0.3a and `RESEARCH_PAPER_DATA.md`)
 
 **Planned, not built** (the full list and status are in
 `PROJECT_STATUS.md` section 0.5)
