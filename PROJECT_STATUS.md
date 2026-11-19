@@ -864,8 +864,8 @@ checks" expander shows the NLI result, whether the numbers match, whether the
 citation exists, the one sentence that decided the verdict, and the full
 cited policy text. There is also an abstention banner, a removed-claims panel,
 per-stage timings, the retrieved passages with their scores, and the raw
-`Answer` as JSON. An **Evaluation** tab reads any run log in `eval/results/`
-and shows its headline numbers.
+`Answer` as JSON. Evaluation numbers are printed by `scripts/evaluate.py`
+(the interface no longer has an Evaluation tab).
 
 The interface was simplified on 2026-11-11: **it no longer has a policy
 filter or a top-k slider** (an older version of this file said it did). It
@@ -885,7 +885,7 @@ in an older version of this file; it was not re-checked for this rewrite.
 - `llm.keep_alive` (30 min) keeps the model loaded between questions.
 - `llm.timeout_seconds` is applied to the Ollama client, and `llm.max_tokens`
   caps reply length (see section 6).
-- `TEAM.md` - the split between three people; `STUDY_GUIDE.md` - review prep;
+- `STUDY_GUIDE.md` - review prep;
   `RESEARCH_PAPER_DATA.md` - results, datasets and methodology for the paper.
 
 ### 7.3 Planned, not built

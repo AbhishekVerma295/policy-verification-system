@@ -58,9 +58,10 @@ WHAT `score` MEANS AFTER THE MERGE
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 from policyverify.config import Config, get_config
+from policyverify.entities import entity_boost, extract_entities
 from policyverify.indexing import VectorStore
 from policyverify.schema import PolicyType, RetrievedChunk
 
@@ -105,12 +106,46 @@ def diversify(
         kept_positions.sort()
 
     # Re-rank so `rank` reflects the final order the caller sees, not the
-    # order the store happened to return.
+    # order the store happened to return. model_copy rather than a fresh
+    # RetrievedChunk(...): it changes only the rank, does not re-validate the
+    # chunk, and keeps the entity boost fields for display.
     final = [candidates[p] for p in kept_positions[:k]]
-    return [
-        RetrievedChunk(chunk=r.chunk, score=r.score, rank=i)
-        for i, r in enumerate(final)
-    ]
+    return [r.model_copy(update={"rank": i}) for i, r in enumerate(final)]
+
+
+def rerank_by_entities(
+    question: str,
+    candidates: list[RetrievedChunk],
+    weights: dict[str, float],
+    weight: float,
+    cap: float,
+) -> list[RetrievedChunk]:
+    """Add a capped boost to candidates that name the same people as the
+    question, then order them by similarity + boost.
+
+    Applied to the EMBEDDING ranking, before it is merged with the keyword
+    ranking. The boost is on the similarity scale, so it has to be applied
+    where similarity decides the order; after the merge the order comes from
+    RRF, and re-sorting by similarity there would undo the merge (see
+    diversify()). `score` is left as the raw similarity. See entities.py.
+    """
+    query_entities = extract_entities(question)
+    if not query_entities or not weights:
+        return candidates
+    out = []
+    for c in candidates:
+        chunk_entities = set(c.chunk.entities)
+        boost = entity_boost(query_entities, chunk_entities, weights, weight, cap)
+        out.append(
+            c.model_copy(
+                update={
+                    "boost": boost,
+                    "matched_entities": sorted(query_entities & chunk_entities),
+                }
+            )
+        )
+    # sorted() is stable, so equal rank_scores keep the store's order.
+    return sorted(out, key=lambda r: -r.rank_score)
 
 
 def reciprocal_rank_fusion(
@@ -160,8 +195,13 @@ def _hybrid_candidates(
     rrf_k: int,
     university: str | None,
     policy_type: PolicyType | str | None,
+    rerank: Callable[[list[RetrievedChunk]], list[RetrievedChunk]] | None = None,
 ) -> list[RetrievedChunk]:
-    """Both searches, merged by RRF, best first, every `score` a cosine."""
+    """Both searches, merged by RRF, best first, every `score` a cosine.
+
+    `rerank` reorders the embedding results before the merge - the entity
+    boost (see rerank_by_entities). The keyword ranking is left as it is.
+    """
     query_vector = store.embed_query(question)
 
     dense = store.search(
@@ -171,6 +211,8 @@ def _hybrid_candidates(
         policy_type=policy_type,
         query_embedding=query_vector,
     )
+    if rerank is not None:
+        dense = rerank(dense)
     # The same filters, applied the same way: they restrict which chunks are
     # eligible, so the keyword side can never bring back a passage from a
     # university or policy the embedding side was told to exclude.
@@ -194,12 +236,13 @@ def _hybrid_candidates(
     out: list[RetrievedChunk] = []
     for position, cid in enumerate(order):
         if cid in by_id:
-            score = by_id[cid].score
-            chunk = by_id[cid].chunk
+            # Keeps the boost fields the rerank step set.
+            out.append(by_id[cid].model_copy(update={"rank": position}))
         else:
-            score = similarity.get(cid, 0.0)
             chunk = keyword_chunks[cid]
-        out.append(RetrievedChunk(chunk=chunk, score=score, rank=position))
+            out.append(
+                RetrievedChunk(chunk=chunk, score=similarity.get(cid, 0.0), rank=position)
+            )
     return out
 
 
@@ -222,17 +265,32 @@ def retrieve(
     # them with.
     oversampled = max(top_k * cfg.oversample_factor, top_k)
 
+    def rerank(candidates: list[RetrievedChunk]) -> list[RetrievedChunk]:
+        if not cfg.entity_boost:
+            return candidates
+        read_manifest = getattr(store, "read_manifest", None)
+        manifest = read_manifest() if callable(read_manifest) else None
+        return rerank_by_entities(
+            question,
+            candidates,
+            weights=manifest.entity_weights if manifest else {},
+            weight=cfg.entity_boost_weight,
+            cap=cfg.entity_boost_cap,
+        )
+
     if cfg.hybrid_search and _supports_hybrid(store):
         # Never pull fewer candidates than the embedding-only path would.
         pool = max(cfg.hybrid_candidate_pool, oversampled)
         candidates = _hybrid_candidates(
-            question, store, pool, cfg.rrf_k, university, policy_type
+            question, store, pool, cfg.rrf_k, university, policy_type, rerank
         )
     else:
-        candidates = store.search(
-            question,
-            k=oversampled,
-            university=university,
-            policy_type=policy_type,
+        candidates = rerank(
+            store.search(
+                question,
+                k=oversampled,
+                university=university,
+                policy_type=policy_type,
+            )
         )
     return diversify(candidates, top_k, cfg.max_chunks_per_citation)

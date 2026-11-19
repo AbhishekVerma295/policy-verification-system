@@ -25,6 +25,7 @@ from policyverify.generate import (
     generate_claims,
     looks_like_instruction,
     parse_draft,
+    resolve_citation,
     salvage_claims,
     screen_passages,
 )
@@ -219,6 +220,51 @@ def test_claims_with_only_fabricated_citations_survive_with_none_left():
     assert unknown == ["srm/x/made-up"]
 
 
+
+def test_citation_with_an_appended_rule_number_resolves():
+    """Measured on the eval set: the model wrote "...guest_accommodation:9.1"
+    for a correct claim. The section is real and was shown to it."""
+    known = {"srm/residence/guest_accommodation"}
+    for written in (
+        "srm/residence/guest_accommodation:9.1",
+        "srm/residence/guest_accommodation#0",
+        "srm/residence/guest_accommodation (9.1)",
+        " srm/residence/guest_accommodation ",
+    ):
+        assert resolve_citation(written, known) == "srm/residence/guest_accommodation"
+
+
+def test_citation_resolution_stays_strict_for_invented_ids():
+    known = {"srm/attendance/7.3-minimum_attendance"}
+    # A different section number is a different section, not a suffix.
+    assert resolve_citation("srm/attendance/7.4-minimum_attendance", known) is None
+    # Extra characters glued on with no separator are not tolerated.
+    assert resolve_citation("srm/attendance/7.3-minimum_attendancex", known) is None
+    # A prefix of a real ID is not that ID.
+    assert resolve_citation("srm/attendance/7.3", known) is None
+
+
+def test_citation_resolution_prefers_the_longest_match():
+    known = {"srm/scholarship/2", "srm/scholarship/2-merit"}
+    assert resolve_citation("srm/scholarship/2-merit:1", known) == "srm/scholarship/2-merit"
+
+
+def test_suffixed_citation_is_kept_on_the_claim_not_reported_as_fabricated():
+    draft = DraftAnswer.model_validate(
+        {
+            "claims": [
+                {
+                    "text": "Attendance is 75%.",
+                    "citation_ids": ["srm/attendance/7.3-minimum_attendance:7.3"],
+                }
+            ]
+        }
+    )
+    cleaned, unknown = drop_unknown_citations(draft, [_retrieved()])
+    assert unknown == []
+    assert cleaned.claims[0].citation_ids == ["srm/attendance/7.3-minimum_attendance"]
+
+
 def _section(citation: str, text: str) -> RetrievedChunk:
     retrieved = _retrieved(citation)
     return RetrievedChunk(
@@ -395,3 +441,26 @@ def test_get_llm_builds_the_ollama_backend():
     config.llm.backend = "ollama"
     backend = get_llm(config)
     assert backend.model == config.llm.model
+
+
+def test_prompt_shows_section_summary_as_context_not_evidence():
+    retrieved = _retrieved()
+    retrieved.chunk.summary = "Covers minimum attendance for all students."
+    rendered = format_passages([retrieved], include_summary=True)
+    assert "context only - do not cite" in rendered
+    assert "Covers minimum attendance" in rendered
+    assert "Covers minimum attendance" not in format_passages(
+        [retrieved], include_summary=False
+    )
+    assert "never on a summary" in build_prompt("q", [retrieved])
+
+
+def test_prompt_shows_the_whole_chunk_by_default():
+    """The prompt used to cut every passage at 1200 characters while chunks
+    were up to 1800, so the model never saw the end of a long chunk."""
+    from policyverify.config import get_config
+
+    cfg = get_config().chunking
+    retrieved = _retrieved()
+    retrieved.chunk.text = "y" * (cfg.max_chars + cfg.overlap_chars)
+    assert retrieved.chunk.text in build_prompt("q", [retrieved])

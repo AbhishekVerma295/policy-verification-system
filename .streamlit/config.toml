@@ -1,0 +1,14 @@
+# Streamlit settings for app.py.
+
+[server]
+# Do not reload the code when a file changes while the app is running.
+#
+# The app loads the search index and models once and keeps them in memory
+# (st.cache_resource). If Streamlit reloads the library underneath them, the
+# kept objects belong to the OLD version of each class and the new code
+# rejects them - a confusing ValidationError in the middle of a demo. After
+# changing the code, stop the app (Ctrl+C) and start it again instead.
+fileWatcherType = "none"
+
+[browser]
+gatherUsageStats = false

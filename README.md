@@ -209,8 +209,8 @@ Type any question, or click an example. A progress panel shows which stage the
 question has reached. Each claim is a card with its verdict, confidence, the
 section it cites and the policy text it was checked against; a claim the policy
 contradicts shows the conflicting policy sentence; removed claims, "true but
-off topic" claims and declined questions are shown too. The **Evaluation** tab
-displays any run saved in `eval/results/`.
+off topic" claims and declined questions are shown too. Evaluation results are
+printed by `scripts/evaluate.py` (see [Evaluation](#evaluation)).
 
 From the command line:
 

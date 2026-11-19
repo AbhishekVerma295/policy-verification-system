@@ -28,14 +28,29 @@ chunking:
   # Split on headings, so each chunk is a whole section and a citation like
   # "4.2" points at something real. These limits are only a fallback for
   # sections that are unusually long or short.
-  max_chars: 1800
+  max_chars: 800
   min_chars: 120
-  overlap_chars: 150
+  overlap_chars: 120
+  # One short summary per section, carried by every chunk of that section,
+  # so a small window keeps the context of the section around it. It helps
+  # search and is shown to the model as context. It is never used to verify
+  # a claim. Summaries are cached in data/processed/section_summaries.json.
+  summaries: true
+  summary_max_chars: 400
+  summary_input_chars: 12000
+  summary_in_prompt: true
 
 retrieval:
   top_k: 6
   # Our main defence against answering with the wrong university's policy.
   enable_university_filter: true
+  # Entity re-ranking: a passage naming the same people as the question
+  # (parent, warden, hosteller...) gets  min(cap, weight * idf)  added to
+  # its similarity for ordering only. The similarity used for abstention
+  # is unchanged. Weights (idf) are computed from the corpus at build time.
+  entity_boost: true
+  entity_boost_weight: 0.1
+  entity_boost_cap: 0.05
 
 llm:
   backend: ollama
