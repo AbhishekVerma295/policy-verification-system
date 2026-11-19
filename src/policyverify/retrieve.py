@@ -24,6 +24,7 @@ WHY THE CAP EXISTS
 from __future__ import annotations
 
 from policyverify.config import Config, get_config
+from policyverify.entities import entity_boost, extract_entities
 from policyverify.indexing import VectorStore
 from policyverify.schema import PolicyType, RetrievedChunk
 
@@ -57,11 +58,44 @@ def diversify(
         kept.extend(overflow[: k - len(kept)])
 
     # Re-rank so `rank` reflects the final order the caller sees, not the
-    # order the store happened to return.
-    final = sorted(kept, key=lambda r: -r.score)[:k]
+    # order the store happened to return. rank_score is similarity plus any
+    # entity boost - see rerank_by_entities().
+    final = sorted(kept, key=lambda r: -r.rank_score)[:k]
     # model_copy rather than a fresh RetrievedChunk(...): it changes only the
     # rank and does not re-validate the chunk, which is already valid.
     return [r.model_copy(update={"rank": i}) for i, r in enumerate(final)]
+
+
+def rerank_by_entities(
+    question: str,
+    candidates: list[RetrievedChunk],
+    weights: dict[str, float],
+    weight: float,
+    cap: float,
+) -> list[RetrievedChunk]:
+    """Add a capped boost to candidates that name the same people as the
+    question, then order by similarity + boost.
+
+    Runs on the oversampled candidate list, before the per-section cap, so a
+    passage just outside the top k can be promoted into it. `score` is left
+    as the raw similarity. See entities.py for why.
+    """
+    query_entities = extract_entities(question)
+    if not query_entities or not weights:
+        return candidates
+    out = []
+    for c in candidates:
+        chunk_entities = set(c.chunk.entities)
+        boost = entity_boost(query_entities, chunk_entities, weights, weight, cap)
+        out.append(
+            c.model_copy(
+                update={
+                    "boost": boost,
+                    "matched_entities": sorted(query_entities & chunk_entities),
+                }
+            )
+        )
+    return sorted(out, key=lambda r: -r.rank_score)
 
 
 def retrieve(
@@ -87,4 +121,14 @@ def retrieve(
         university=university,
         policy_type=policy_type,
     )
-    return diversify(candidates, top_k, config.retrieval.max_chunks_per_citation)
+    rcfg = config.retrieval
+    if rcfg.entity_boost:
+        manifest = store.read_manifest()
+        candidates = rerank_by_entities(
+            question,
+            candidates,
+            weights=manifest.entity_weights if manifest else {},
+            weight=rcfg.entity_boost_weight,
+            cap=rcfg.entity_boost_cap,
+        )
+    return diversify(candidates, top_k, rcfg.max_chunks_per_citation)

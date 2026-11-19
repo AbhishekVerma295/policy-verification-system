@@ -25,6 +25,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from policyverify.entities import encode_entities
+
 # ---------------------------------------------------------------------------
 # Contract 1: the citation ID
 # ---------------------------------------------------------------------------
@@ -301,6 +303,13 @@ class Chunk(BaseModel):
     policy_type: PolicyType
     section_path: str  # " > ".join(section.path)
     source_url: str
+    # A summary of the WHOLE section this chunk belongs to, written at index
+    # time. It is context for search and for the prompt, never evidence:
+    # the verifier checks claims against `text` only.
+    summary: str = ""
+    # Who this chunk is about (parent, warden, hosteller...), extracted from
+    # its own text and heading. Used to re-rank. See entities.py.
+    entities: list[str] = Field(default_factory=list)
 
     @field_validator("citation_id")
     @classmethod
@@ -328,6 +337,9 @@ class Chunk(BaseModel):
             "policy_type": self.policy_type.value,
             "section_path": self.section_path,
             "source_url": self.source_url,
+            "summary": self.summary,
+            # Chroma metadata is flat, so the set is one "|a|b|" string.
+            "entities": encode_entities(self.entities),
         }
 
 
@@ -335,8 +347,19 @@ class RetrievedChunk(BaseModel):
     """A chunk plus how well it matched the question."""
 
     chunk: Chunk
+    # Cosine similarity from the vector search, in [0, 1]. Never changed by
+    # re-ranking: the abstention threshold reads this, and an entity boost
+    # must not make a weak match look strong enough to answer from.
     score: float
     rank: int
+    # Re-ranking bonus for naming the same people as the question.
+    # See entities.py. Results are ordered by `rank_score`.
+    boost: float = 0.0
+    matched_entities: list[str] = Field(default_factory=list)
+
+    @property
+    def rank_score(self) -> float:
+        return self.score + self.boost
 
 
 # ---------------------------------------------------------------------------

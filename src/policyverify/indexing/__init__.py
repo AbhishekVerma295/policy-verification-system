@@ -28,13 +28,21 @@ from policyverify.indexing.store import (
     VectorStore,
     embedding_text,
 )
+from policyverify.indexing.summarize import (
+    SectionSummarizer,
+    SummaryCache,
+    extractive_summary,
+)
 
 __all__ = [
     "COLLECTION_NAME",
     "Embedder",
     "IndexManifest",
     "IndexMismatchError",
+    "SectionSummarizer",
+    "SummaryCache",
     "VectorStore",
+    "extractive_summary",
     "chunk_document",
     "chunk_documents",
     "embedding_text",

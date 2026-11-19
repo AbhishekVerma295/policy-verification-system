@@ -23,8 +23,18 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from policyverify.config import get_config  # noqa: E402
-from policyverify.indexing import VectorStore, chunk_document  # noqa: E402
+from policyverify.indexing import (  # noqa: E402
+    SectionSummarizer,
+    SummaryCache,
+    VectorStore,
+    chunk_document,
+)
+from policyverify.llm import get_llm  # noqa: E402
 from policyverify.schema import Document  # noqa: E402
+
+# Lives beside the processed documents, outside the */*.json pattern that
+# load_documents() reads, and outside data/index, which a rebuild replaces.
+SUMMARY_CACHE_NAME = "section_summaries.json"
 
 # Questions used only for the post-build smoke test. Chosen to cover
 # different policy types so an obviously-broken index is visible immediately.
@@ -54,6 +64,11 @@ def main() -> int:
         action="store_true",
         help="skip the smoke search after building",
     )
+    parser.add_argument(
+        "--offline-summaries",
+        action="store_true",
+        help="do not call the LLM; summarise each section by its opening sentences",
+    )
     args = parser.parse_args()
 
     config = get_config()
@@ -65,10 +80,30 @@ def main() -> int:
     documents = load_documents(processed_dir)
     print(f"  {len(documents)} documents")
 
+    summarizer = None
+    if config.chunking.summaries:
+        cache = SummaryCache(processed_dir / SUMMARY_CACHE_NAME)
+        llm = None if args.offline_summaries else get_llm(config)
+        summarizer = SectionSummarizer(
+            llm,
+            config.chunking,
+            cache=cache,
+            model_name=config.llm.model,
+            on_event=lambda msg: print(f"    {msg}", flush=True),
+        )
+        source = "opening sentences" if llm is None else config.llm.model
+        print(f"\n  section summaries: {source} ({len(cache)} cached)")
+
     print("\n[2/3] chunking ...")
     all_chunks = []
     for doc in documents:
-        chunks = chunk_document(doc)
+        chunks = chunk_document(
+            doc, summarize=summarizer.summarise if summarizer else None
+        )
+        if summarizer:
+            # Save after every document, so an interrupted build keeps the
+            # summaries it already paid for.
+            summarizer.cache.save()
         all_chunks.extend(chunks)
         dropped = len(doc.sections) - len({c.citation_id for c in chunks})
         note = f"  ({dropped} noise sections dropped)" if dropped > 0 else ""
@@ -83,6 +118,12 @@ def main() -> int:
         f"  chunk size: min={min(sizes)} median={sorted(sizes)[len(sizes) // 2]} "
         f"max={max(sizes)} chars"
     )
+    if summarizer:
+        s = summarizer.stats
+        print(
+            f"  summaries: {s['generated']} generated, {s['cached']} cached, "
+            f"{s['fallback']} from opening sentences"
+        )
 
     print(f"\n[3/3] embedding with {config.embedding.model_name} on "
           f"{config.embedding.device} ...")

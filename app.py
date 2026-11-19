@@ -275,7 +275,10 @@ def draw_answer(answer: Answer, passages: list, store: VectorStore) -> None:
             "and only cite, these."
         )
         for r in passages:
-            st.markdown(f"`{r.score:.3f}` &nbsp; **{r.chunk.citation_id}**")
+            boost = (
+                f" +{r.boost:.3f} ({', '.join(r.matched_entities)})" if r.boost else ""
+            )
+            st.markdown(f"`{r.score:.3f}{boost}` &nbsp; **{r.chunk.citation_id}**")
             st.caption(r.chunk.text[:400] + ("..." if len(r.chunk.text) > 400 else ""))
 
     with st.expander("Raw answer (JSON)"):

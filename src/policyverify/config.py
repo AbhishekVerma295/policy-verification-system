@@ -68,9 +68,29 @@ class ChunkingConfig(BaseModel):
     only as a fallback.
     """
 
-    max_chars: int = 1800
+    # 800 rather than the original 1800. At 1800 a window held several
+    # unrelated rules, so its embedding was an average of all of them and
+    # matched no single question well. The prompt also cut each passage at
+    # 1200 characters, so the model never saw the last third of a full-size
+    # window even though the verifier checked claims against all of it.
+    max_chars: int = 800
     min_chars: int = 120
-    overlap_chars: int = 150
+    overlap_chars: int = 120
+
+    # Each section gets a short summary, which every one of its chunks
+    # carries. A small window loses the context of the section around it.
+    # The summary restores that context for search and for the prompt. It
+    # is NEVER evidence: claims are still verified only against `text`.
+    summaries: bool = True
+    # Longest summary kept. Longer model output is cut at a sentence end.
+    summary_max_chars: int = 400
+    # Sections longer than this are summarised in parts, and the part
+    # summaries are then combined. That keeps each request well inside the
+    # model's context window (num_ctx).
+    summary_input_chars: int = 12000
+    # Show the summary to the answering model, labelled as context it must
+    # not cite. Turn this off to measure whether the summary helps.
+    summary_in_prompt: bool = True
 
 
 class RetrievalConfig(BaseModel):
@@ -93,6 +113,19 @@ class RetrievalConfig(BaseModel):
     # How many extra candidates to pull before applying that cap, as a
     # multiple of top_k. Needs to be > 1 or capping would just leave gaps.
     oversample_factor: int = 4
+
+    # Entity re-ranking (see entities.py). A candidate that names the same
+    # people as the question (parent, warden, hosteller...) is ranked by
+    #     similarity + min(entity_boost_cap, entity_boost_weight * idf)
+    # where idf is the rarest matched entity's weight in [0, 1]. The
+    # similarity itself is never changed, so abstention is unaffected.
+    entity_boost: bool = True
+    entity_boost_weight: float = 0.1
+    # The most a match can add. It should only reorder passages that are
+    # already close: bge similarities for one question are typically spread
+    # over a few hundredths, so 0.05 is enough to reorder near-ties and too
+    # little to promote an off-topic passage.
+    entity_boost_cap: float = 0.05
 
 
 class LLMConfig(BaseModel):

@@ -370,3 +370,140 @@ def test_get_by_citation_is_stable_across_calls():
     first = _store_with([2, 0, 1]).get_by_citation(CITATION_FOR_ORDER)
     second = _store_with([1, 2, 0]).get_by_citation(CITATION_FOR_ORDER)
     assert [c.chunk_id for c in first] == [c.chunk_id for c in second]
+
+
+# ---------------------------------------------------------------------------
+# Section summaries
+# ---------------------------------------------------------------------------
+
+
+class _FakeLLM:
+    """Records prompts and returns a fixed summary, so no model is needed."""
+
+    def __init__(self, reply="Summary: Students must attend 75% of classes."):
+        self.reply = reply
+        self.prompts: list[str] = []
+
+    def generate(self, prompt: str, *, json_mode: bool = True) -> str:
+        assert json_mode is False, "summaries are prose, not JSON"
+        self.prompts.append(prompt)
+        return self.reply
+
+
+class _DeadLLM:
+    calls = 0
+
+    def generate(self, prompt: str, *, json_mode: bool = True) -> str:
+        from policyverify.llm import LLMError
+
+        _DeadLLM.calls += 1
+        raise LLMError("connection refused")
+
+
+def test_default_chunks_are_small():
+    """The original 1800-character windows held several unrelated rules each."""
+    cfg = ChunkingConfig()
+    assert cfg.max_chars <= 800
+    assert cfg.overlap_chars < cfg.max_chars // 4
+
+
+def test_every_piece_of_a_section_carries_the_same_section_summary():
+    from policyverify.indexing.summarize import SectionSummarizer
+
+    long_text = "\n\n".join(f"Clause {i} of the attendance rule." for i in range(100))
+    doc = _doc([Section(number="4", heading="Attendance", text=long_text)])
+    cfg = ChunkingConfig(max_chars=300, overlap_chars=30)
+    llm = _FakeLLM()
+    summarizer = SectionSummarizer(llm, cfg)
+    chunks = chunk_document(doc, cfg, summarize=summarizer.summarise)
+
+    assert len(chunks) > 1
+    assert {c.summary for c in chunks} == {"Students must attend 75% of classes."}
+    assert len(llm.prompts) == 1, "one summary per section, not per chunk"
+    # The summary is context only - the chunk text is still the source text.
+    assert all("75%" not in c.text for c in chunks)
+
+
+def test_summary_goes_into_the_embedding_but_not_the_chunk_text():
+    chunk = Chunk(
+        chunk_id="srm/attendance/4.2#3",
+        text="Clause 7 applies in that case.",
+        citation_id="srm/attendance/4.2",
+        university="srm",
+        university_name="SRM Institute of Science and Technology",
+        policy_type=PolicyType.ATTENDANCE,
+        section_path="Attendance > Condonation",
+        source_url="https://example.srmist.edu.in/a",
+        summary="Students below 75% attendance may apply for condonation.",
+    )
+    assert "condonation" in embedding_text(chunk)
+    assert chunk.text == "Clause 7 applies in that case."
+    assert chunk.to_metadata()["summary"] == chunk.summary
+
+
+def test_long_sections_are_summarised_in_parts_then_combined():
+    from policyverify.indexing.summarize import SectionSummarizer
+
+    text = "\n\n".join(f"Rule {i} says something specific here." for i in range(60))
+    cfg = ChunkingConfig(summary_input_chars=500)
+    llm = _FakeLLM("A combined summary.")
+    SectionSummarizer(llm, cfg).summarise(Section(heading="Long", text=text))
+    assert len(llm.prompts) > 2
+    assert "PART SUMMARIES" in llm.prompts[-1]
+    assert all(len(p) < 500 + 1500 for p in llm.prompts[:-1]), "a part overflowed"
+
+
+def test_summaries_are_cached_by_text(tmp_path):
+    from policyverify.indexing.summarize import SectionSummarizer, SummaryCache
+
+    section = Section(heading="Attendance", text="Students must attend 75% of classes.")
+    cfg = ChunkingConfig()
+    path = tmp_path / "summaries.json"
+
+    first = SectionSummarizer(_FakeLLM(), cfg, SummaryCache(path), model_name="m")
+    first.summarise(section)
+    first.cache.save()
+
+    llm = _FakeLLM()
+    second = SectionSummarizer(llm, cfg, SummaryCache(path), model_name="m")
+    assert second.summarise(section) == "Students must attend 75% of classes."
+    assert llm.prompts == [], "a cached summary must not call the model"
+
+    # Edited text, or a different model, means a fresh summary.
+    second.summarise(Section(heading="Attendance", text="Students must attend 80%."))
+    assert len(llm.prompts) == 1
+
+
+def test_unreachable_model_falls_back_to_the_opening_and_stops_retrying():
+    from policyverify.indexing.summarize import SectionSummarizer
+
+    _DeadLLM.calls = 0
+    summarizer = SectionSummarizer(_DeadLLM(), ChunkingConfig(summary_max_chars=60))
+    text = "Students must attend 75% of classes. Medical leave counts. More text follows here."
+    first = summarizer.summarise(Section(heading="A", text=text))
+    summarizer.summarise(Section(heading="B", text="Second section has its own words."))
+
+    assert first == "Students must attend 75% of classes. Medical leave counts."
+    assert _DeadLLM.calls == 1, "after one failure the build must not keep waiting"
+    assert summarizer.stats["fallback"] == 2
+
+
+def test_clean_summary_strips_labels_and_cuts_at_a_sentence():
+    from policyverify.indexing.summarize import clean_summary
+
+    raw = 'Summary:  "First sentence here.\n Second one is longer than the limit allows."'
+    assert clean_summary(raw, 30) == "First sentence here."
+
+
+def test_chunks_are_tagged_from_text_and_heading_not_from_the_summary():
+    """A model-written summary must not decide who a rule is for."""
+    doc = _doc(
+        [Section(heading="Guest Accommodation", text="Rooms may be booked 7 days ahead.")],
+        policy=PolicyType.RESIDENCE,
+    )
+    chunk = chunk_document(
+        doc, summarize=lambda *_: "Parents may stay for up to three days."
+    )[0]
+    assert "visitor" in chunk.entities  # from the heading
+    assert "parent" not in chunk.entities  # only the summary said it
+    assert chunk.to_metadata()["entities"] == "|visitor|"

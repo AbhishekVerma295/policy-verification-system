@@ -31,8 +31,10 @@ rather than assumed (147 sections, 2026-08-19):
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 
 from policyverify.config import ChunkingConfig, get_config
+from policyverify.entities import extract_entities
 from policyverify.schema import Chunk, Document, Section
 
 # A "word" for noise detection: a token containing at least one letter.
@@ -128,8 +130,17 @@ def split_long_text(text: str, max_chars: int, overlap_chars: int) -> list[str]:
     return windows
 
 
-def chunk_document(doc: Document, config: ChunkingConfig | None = None) -> list[Chunk]:
-    """Turn one Document into the chunks that will be indexed and searched."""
+def chunk_document(
+    doc: Document,
+    config: ChunkingConfig | None = None,
+    summarize: Callable[[Section, str, str, str], str] | None = None,
+) -> list[Chunk]:
+    """Turn one Document into the chunks that will be indexed and searched.
+
+    `summarize(section, university_name, policy_type, section_path)` writes
+    the section summary that every chunk of that section carries. See
+    summarize.py. Without it, chunks have an empty summary.
+    """
     cfg = config or get_config().chunking
     chunks: list[Chunk] = []
 
@@ -146,7 +157,19 @@ def chunk_document(doc: Document, config: ChunkingConfig | None = None) -> list[
         section_path = " > ".join(section.path) if section.path else section.heading
 
         pieces = split_long_text(section.text, cfg.max_chars, cfg.overlap_chars)
+        if not pieces:
+            continue
+        # One summary per section, shared by all its pieces, so a small
+        # window still carries the context of the section it came from.
+        summary = ""
+        if summarize is not None and cfg.summaries:
+            summary = summarize(
+                section, doc.university_name, doc.policy_type.value, section_path
+            )
         for i, piece in enumerate(pieces):
+            # Tagged from the source text and heading, never from the
+            # summary: model-written text must not decide who a rule is for.
+            entities = sorted(extract_entities(f"{section_path}\n{piece}"))
             chunks.append(
                 Chunk(
                     # Same citation for every piece of one section - they are
@@ -159,15 +182,21 @@ def chunk_document(doc: Document, config: ChunkingConfig | None = None) -> list[
                     policy_type=doc.policy_type,
                     section_path=section_path,
                     source_url=doc.source_url,
+                    summary=summary,
+                    entities=entities,
                 )
             )
 
     return chunks
 
 
-def chunk_documents(docs: list[Document], config: ChunkingConfig | None = None) -> list[Chunk]:
+def chunk_documents(
+    docs: list[Document],
+    config: ChunkingConfig | None = None,
+    summarize: Callable[[Section, str, str, str], str] | None = None,
+) -> list[Chunk]:
     """Chunk several documents, preserving order."""
     out: list[Chunk] = []
     for doc in docs:
-        out.extend(chunk_document(doc, config))
+        out.extend(chunk_document(doc, config, summarize))
     return out

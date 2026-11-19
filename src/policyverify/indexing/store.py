@@ -18,8 +18,8 @@ in here are worth understanding, because both are load-bearing.
    sentence telling you to rebuild.
 
 2. WHAT GETS EMBEDDED IS NOT WHAT GETS VERIFIED
-   The text we embed has the university, policy type and section heading
-   prepended. The text we store as the chunk's content does not.
+   The text we embed has the university, policy type, section heading and
+   section summary prepended. The text we store as the chunk's content does not.
 
    Those serve different jobs. For SEARCH, a passage reading "Students must
    attend at least 75% of classes" is ambiguous on its own - the heading is
@@ -34,11 +34,12 @@ in here are worth understanding, because both are load-bearing.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
 from policyverify.config import Config, get_config
+from policyverify.entities import decode_entities, entity_weights
 from policyverify.schema import Chunk, PolicyType, RetrievedChunk
 
 COLLECTION_NAME = "policies"
@@ -61,6 +62,9 @@ class IndexManifest:
     document_count: int
     built_at: str
     chunking: dict
+    # IDF weight of each entity over this index's chunks. See entities.py.
+    # Empty for an index built before entities existed: no boost is applied.
+    entity_weights: dict[str, float] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -70,6 +74,7 @@ class IndexManifest:
             "document_count": self.document_count,
             "built_at": self.built_at,
             "chunking": self.chunking,
+            "entity_weights": self.entity_weights,
         }
 
     @classmethod
@@ -81,6 +86,7 @@ class IndexManifest:
             document_count=data["document_count"],
             built_at=data["built_at"],
             chunking=data.get("chunking", {}),
+            entity_weights=data.get("entity_weights", {}),
         )
 
 
@@ -91,9 +97,30 @@ def embedding_text(chunk: Chunk) -> str:
     See the note at the top of this module for why this differs from
     `chunk.text`.
     """
-    return (
-        f"{chunk.university_name} | {chunk.policy_type.value} | "
-        f"{chunk.section_path}\n{chunk.text}"
+    header = (
+        f"{chunk.university_name} | {chunk.policy_type.value} | {chunk.section_path}"
+    )
+    # The section summary carries the context a small window loses: what the
+    # whole section is about and who it applies to. See summarize.py.
+    if chunk.summary:
+        header = f"{header}\nSection summary: {chunk.summary}"
+    return f"{header}\n{chunk.text}"
+
+
+def _chunk_from_row(chunk_id: str, text: str, meta: dict) -> Chunk:
+    """Rebuild a Chunk from what Chroma stores for it."""
+    return Chunk(
+        chunk_id=chunk_id,
+        text=text,
+        citation_id=meta["citation_id"],
+        university=meta["university"],
+        university_name=meta["university_name"],
+        policy_type=PolicyType(meta["policy_type"]),
+        section_path=meta["section_path"],
+        source_url=meta["source_url"],
+        # Both absent in an index built before they existed.
+        summary=meta.get("summary", ""),
+        entities=sorted(decode_entities(meta.get("entities"))),
     )
 
 
@@ -251,6 +278,7 @@ class VectorStore:
             document_count=document_count,
             built_at=datetime.now(UTC).isoformat(timespec="seconds"),
             chunking=self.config.chunking.model_dump(),
+            entity_weights=entity_weights(set(c.entities) for c in chunks),
         )
         self.manifest_path.parent.mkdir(parents=True, exist_ok=True)
         self.manifest_path.write_text(
@@ -305,16 +333,7 @@ class VectorStore:
         for rank, (cid, text, meta, dist) in enumerate(
             zip(ids, documents, metadatas, distances, strict=True)
         ):
-            chunk = Chunk(
-                chunk_id=cid,
-                text=text,
-                citation_id=meta["citation_id"],
-                university=meta["university"],
-                university_name=meta["university_name"],
-                policy_type=PolicyType(meta["policy_type"]),
-                section_path=meta["section_path"],
-                source_url=meta["source_url"],
-            )
+            chunk = _chunk_from_row(cid, text, meta)
             # Chroma reports cosine *distance*; convert to a similarity in
             # [0, 1] so that "higher is better", which is what the abstention
             # thresholds in config.yaml assume.
@@ -345,18 +364,7 @@ class VectorStore:
         for cid, text, meta in zip(
             result["ids"], result["documents"], result["metadatas"], strict=True
         ):
-            chunks.append(
-                Chunk(
-                    chunk_id=cid,
-                    text=text,
-                    citation_id=meta["citation_id"],
-                    university=meta["university"],
-                    university_name=meta["university_name"],
-                    policy_type=PolicyType(meta["policy_type"]),
-                    section_path=meta["section_path"],
-                    source_url=meta["source_url"],
-                )
-            )
+            chunks.append(_chunk_from_row(cid, text, meta))
 
         def piece_number(chunk: Chunk) -> tuple[int, str]:
             """Sort key: the integer after the final '#', then the id itself.
