@@ -232,6 +232,12 @@ def _mentions(value: str, text: str) -> bool:
 
     So the rule is: block a following word character, and block a following
     "." only when a digit comes after it.
+
+    The same care applies on the left. "75" must not match inside "0.75", so
+    a preceding digit-then-dot blocks the match - but a dot that merely ends
+    an abbreviation does not: "5000" must match "Rs.5000/-". An earlier
+    version blocked ANY preceding dot and scored correct rupee amounts as
+    missing.
     """
     # Normalise the label first: collapse whitespace runs, and drop any space
     # before a percent sign so "75 %" and "75%" are written the same way
@@ -244,7 +250,7 @@ def _mentions(value: str, text: str) -> bool:
     pattern = pattern.replace(r"\ ", r"\s+").replace(" ", r"\s+")
     pattern = pattern.replace("%", r"\s*%")
     return (
-        re.search(rf"(?<![\w.]){pattern}(?!\w)(?!\.\d)", text, re.I) is not None
+        re.search(rf"(?<!\w)(?<!\d\.){pattern}(?!\w)(?!\.\d)", text, re.I) is not None
     )
 
 

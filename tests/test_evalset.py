@@ -460,6 +460,10 @@ def test_the_real_baseline_matches_the_real_corpus_labels():
         ("7", "within 7 days", True),
         ("two", "two representatives per floor", True),
         ("7 days", "at least  7   days later", True),
+        # a dot that ends an abbreviation is not part of the number
+        ("5000", "the cancellation fee of Rs.5000/-", True),
+        ("500", "fined Rs.500/- for the first time", True),
+        ("5000", "a fee of Rs.15000 applies", False),
     ],
 )
 def test_mentions_token_boundaries(value, text, expected):

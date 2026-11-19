@@ -37,6 +37,7 @@ from policyverify.pipeline import answer_question  # noqa: E402
 from policyverify.retrieve import retrieve  # noqa: E402
 from policyverify.schema import Answer, ClaimVerdict, VerdictStatus  # noqa: E402
 from policyverify.verify import NLIChecker  # noqa: E402
+from policyverify.verify.verifier import policy_says  # noqa: E402
 
 st.set_page_config(page_title="Policy Verification System", page_icon="✅", layout="wide")
 
@@ -48,12 +49,16 @@ STYLES = {
     VerdictStatus.NEUTRAL: ("UNVERIFIED", "#d98a00", "rgba(217, 138, 0, 0.10)"),
 }
 
+# A supported claim withheld because it does not answer the question asked.
+OFF_TOPIC_STYLE = ("TRUE BUT OFF TOPIC", "#6b7280", "rgba(107, 114, 128, 0.10)")
+
 # What the page says while each pipeline stage runs.
 STAGE_MESSAGES = {
     "retrieve": "1/4  Searching the policy documents for relevant passages ...",
     "generate": "2/4  The language model is writing claims from those passages "
     "(the slow step: 1-2 minutes without a GPU) ...",
-    "verify": "3/4  Checking every claim against the policy text it cites ...",
+    "verify": "3/4  Checking every claim against the policy text it cites, "
+    "and that it answers the question ...",
     "decide": "4/4  Keeping verified claims, removing the rest ...",
 }
 
@@ -81,9 +86,13 @@ DOCUMENTS = [
     "Code of Conduct for Students",
 ]
 
-st.markdown(
+st.html(
     """
     <style>
+      /* Streamlit reserves a large top margin on wide layouts. The title is
+         the first thing on the page, so most of that space is wasted. */
+      .stMainBlockContainer { padding-top: 2.5rem; }
+
       .claim-card { border-left: 5px solid; border-radius: 6px; padding: 0.7rem 1rem;
                     margin: 0.6rem 0 0.2rem 0; }
       .claim-head { font-size: 0.78rem; font-weight: 700; letter-spacing: 0.04em; }
@@ -91,8 +100,7 @@ st.markdown(
       .claim-why  { font-size: 0.85rem; opacity: 0.8; }
       .cite { font-family: monospace; font-size: 0.8rem; opacity: 0.85; }
     </style>
-    """,
-    unsafe_allow_html=True,
+    """
 )
 
 
@@ -153,19 +161,31 @@ def evidence_for(verdict: ClaimVerdict, store: VectorStore) -> list:
 
 def draw_claim(verdict: ClaimVerdict, store: VectorStore, key: str) -> None:
     label, colour, background = STYLES[verdict.status]
+    # A claim the relevance gate withheld is TRUE of its passage but does not
+    # answer the question, so "SUPPORTED" in green would be misleading on a
+    # removed card. getattr keeps answers saved before the gate working.
+    if getattr(verdict.checks, "relevant", None) is False:
+        label, colour, background = OFF_TOPIC_STYLE
     citations = "".join(
         f'<div class="cite">&rarr; {html.escape(c)}</div>' for c in verdict.claim.citation_ids
     ) or '<div class="cite">&rarr; (no citation given)</div>'
+    # The policy sentence behind a wrong claim, on the card itself. Empty for
+    # supported claims and for old saved answers without the evidence fields;
+    # also empty when the explanation above already quotes it.
+    policy_lines = "".join(
+        f'<div class="claim-why">{html.escape(line)}</div>' for line in policy_says(verdict)
+    )
 
     st.markdown(
         f"""
         <div class="claim-card" style="border-color: {colour}; background: {background};">
           <div class="claim-head" style="color: {colour};">
-            {label} &middot; confidence {verdict.score:.2f}
+            {label} &middot; support {verdict.score:.2f}
           </div>
           <div class="claim-text">{html.escape(verdict.claim.text)}</div>
           {citations}
           <div class="claim-why">{html.escape(verdict.explanation)}</div>
+          {policy_lines}
         </div>
         """,
         unsafe_allow_html=True,
@@ -174,10 +194,16 @@ def draw_claim(verdict: ClaimVerdict, store: VectorStore, key: str) -> None:
     with st.expander("Evidence and checks", key=key):
         checks = verdict.checks
         c1, c2, c3 = st.columns(3)
+        # Two different numbers live here and they are easy to confuse. The
+        # card above shows SUPPORT - how strongly the passage entails the
+        # claim. This shows how certain the model was of whichever label it
+        # picked. A neutral verdict can read "support 0.03" above and
+        # "neutral, certainty 0.96" here: not a contradiction, two different
+        # questions. Naming them differently is the whole point.
         c1.markdown(
             "**Entailment (NLI)**  \n"
             + (
-                f"{checks.nli_label} ({checks.nli_score:.2f})"
+                f"{checks.nli_label} &mdash; certainty {checks.nli_score:.2f}"
                 if checks.nli_label is not None and checks.nli_score is not None
                 else "not run"
             )
@@ -188,6 +214,26 @@ def draw_claim(verdict: ClaimVerdict, store: VectorStore, key: str) -> None:
             + (f" - {checks.numeric_detail}" if checks.numeric_detail else "")
         )
         c3.markdown("**Citation exists**  \n" + ("yes" if checks.citation_exists else "no"))
+
+        # The one sentence that decided the verdict, shown before the whole
+        # section so the reader does not have to hunt for it. getattr keeps
+        # older saved answers (from before these fields existed) working.
+        evidence_text = getattr(checks, "evidence_text", None)
+        if evidence_text:
+            heading = (
+                "Contradicting sentence"
+                if verdict.status is VerdictStatus.REFUTED
+                else "Supporting sentence"
+            )
+            st.markdown(f"**{heading}** &middot; {html.escape(checks.evidence_chunk_id or '')}")
+            st.text(evidence_text)
+        contradicting_text = getattr(checks, "contradicting_text", None)
+        if getattr(checks, "conflict", False) and contradicting_text:
+            st.markdown(
+                "**Contradicting sentence (another cited section)** &middot; "
+                + html.escape(checks.contradicting_chunk_id or "")
+            )
+            st.text(contradicting_text)
 
         chunks = evidence_for(verdict, store)
         if not chunks:
@@ -205,10 +251,17 @@ def draw_declined(answer: Answer) -> None:
     words a student would use, and lists what the system can answer from -
     otherwise "no answer" reads like a crash.
     """
-    # abstain.decide() also declines when even the best passage is a weak
-    # match; any drafted claims are then removed without being the cause.
-    off_topic = "does not appear to cover" in (answer.reason or "")
-    if answer.claims_removed and not off_topic:
+    # abstain.decide() words this case as "do not appear to contain": the
+    # relevance gate found the drafted claims TRUE of the policy but not an
+    # answer to the question - so the fact-checker did not reject them.
+    off_topic = "do not appear to contain" in (answer.reason or "")
+    if off_topic:
+        why = (
+            "The search found related passages, but none of them states this. "
+            "The statements drafted from them are true of the policy but do not "
+            "answer the question; they are listed below under *Removed claims*."
+        )
+    elif answer.claims_removed:
         why = (
             "The language model drafted an answer, but the fact-checker could not "
             "confirm it from the policy text, so it is **not** shown as an answer. "
@@ -223,7 +276,7 @@ def draw_declined(answer: Answer) -> None:
     st.warning(
         "**This is not stated in the SRM policy documents, so the system did not "
         "answer.**\n\n" + why,
-        icon="🛑",
+        icon=":material/block:",
     )
     st.info(
         "The system answers **only** from these six documents. A question about "
@@ -241,18 +294,18 @@ def draw_answer(answer: Answer, passages: list, store: VectorStore) -> None:
     elif answer.claims_kept:
         st.success(
             f"**{len(answer.claims_kept)} verified claim(s).** Every statement below "
-            "was checked against the policy text it cites. Confidence runs from "
+            "was checked against the policy text it cites. Support runs from "
             "0.00 to 1.00.",
-            icon="✅",
+            icon=":material/verified:",
         )
         for i, verdict in enumerate(answer.claims_kept):
             draw_claim(verdict, store, key=f"kept-{i}")
         if answer.reason:
-            st.info(answer.reason)
+            st.info(answer.reason, icon=":material/info:")
 
     if answer.claims_removed:
-        st.markdown("---")
-        st.markdown(f"#### Removed claims ({len(answer.claims_removed)})")
+        st.space("small")
+        st.markdown(f"##### Removed claims ({len(answer.claims_removed)})")
         st.caption(
             "The model generated these and the system would not stand behind them. "
             "They are shown rather than hidden, so you can see what was rejected and why."
@@ -260,16 +313,19 @@ def draw_answer(answer: Answer, passages: list, store: VectorStore) -> None:
         for i, verdict in enumerate(answer.claims_removed):
             draw_claim(verdict, store, key=f"removed-{i}")
 
-    st.markdown("---")
+    st.space("small")
     t = answer.timings
-    m1, m2, m3, m4, m5 = st.columns(5)
-    m1.metric("Kept", len(answer.claims_kept))
-    m2.metric("Removed", len(answer.claims_removed))
-    m3.metric("Retrieve", f"{t.retrieve_ms / 1000:.1f}s")
-    m4.metric("Generate", f"{t.generate_ms / 1000:.1f}s")
-    m5.metric("Verify", f"{t.verify_ms / 1000:.1f}s")
+    with st.container(border=True):
+        m1, m2, m3, m4, m5 = st.columns(5)
+        m1.metric("Kept", len(answer.claims_kept))
+        m2.metric("Removed", len(answer.claims_removed))
+        m3.metric("Retrieve", f"{t.retrieve_ms / 1000:.1f}s")
+        m4.metric("Generate", f"{t.generate_ms / 1000:.1f}s")
+        m5.metric("Verify", f"{t.verify_ms / 1000:.1f}s")
 
-    with st.expander(f"Retrieved passages ({len(passages)})"):
+    with st.expander(
+        f"Retrieved passages ({len(passages)})", icon=":material/search:"
+    ):
         st.caption(
             "What the search returned for this question. The model may only use, "
             "and only cite, these."
@@ -281,7 +337,7 @@ def draw_answer(answer: Answer, passages: list, store: VectorStore) -> None:
             st.markdown(f"`{r.score:.3f}{boost}` &nbsp; **{r.chunk.citation_id}**")
             st.caption(r.chunk.text[:400] + ("..." if len(r.chunk.text) > 400 else ""))
 
-    with st.expander("Raw answer (JSON)"):
+    with st.expander("Raw answer (JSON)", icon=":material/code:"):
         st.json(json.loads(answer.model_dump_json()))
 
 
@@ -326,17 +382,36 @@ with st.form("ask"):
     )
     submitted = st.form_submit_button("Verify answer", type="primary")
 
-st.caption("Try one (each of these is answered from the policy documents):")
-columns = st.columns(3)
-for i, (kind, example) in enumerate(EXAMPLES):
-    columns[i % 3].button(
-        example,
-        key=f"example-{i}",
-        help=kind,
-        on_click=use_example,
-        args=(example,),
-        width="stretch",
-    )
+# The examples are drawn into this slot further down, once we know whether
+# there is an answer to show. Reserving the space here keeps them directly
+# under the question box; filling it later lets the *first* answer collapse
+# them too, which a plain top-to-bottom render cannot do.
+examples_slot = st.container()
+
+
+def draw_examples(collapsed: bool) -> None:
+    def buttons() -> None:
+        columns = st.columns(3)
+        for i, (kind, example) in enumerate(EXAMPLES):
+            columns[i % 3].button(
+                example,
+                key=f"example-{i}",
+                help=kind,
+                on_click=use_example,
+                args=(example,),
+                width="stretch",
+            )
+
+    with examples_slot:
+        if collapsed:
+            # Six full-width buttons between the question and the answer
+            # pushed every result below the fold.
+            with st.expander("Try another example", icon=":material/lightbulb:"):
+                buttons()
+        else:
+            st.caption("Try one (each of these is answered from the policy documents):")
+            buttons()
+
 
 to_run = question.strip() if submitted else st.session_state.pop("pending", None)
 
@@ -378,6 +453,9 @@ if to_run:
             "the Start menu and ask again."
         )
 
-if "result" in st.session_state:
+has_result = "result" in st.session_state
+draw_examples(collapsed=has_result)
+
+if has_result:
     draw_answer(*st.session_state["result"], store)
 

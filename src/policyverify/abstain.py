@@ -4,6 +4,7 @@ abstain.py - deciding whether to answer at all, and what to stand behind.
 Two decisions live here, and they are different:
 
   WHICH CLAIMS TO KEEP   a claim survives only if verification supported it
+                         AND the relevance gate found it answers the question
   WHETHER TO ANSWER      if too little survives, decline the whole question
 
 REMOVED CLAIMS ARE KEPT, NOT DELETED
@@ -16,6 +17,11 @@ REMOVED CLAIMS ARE KEPT, NOT DELETED
     between "the policy does not mention this" and "we checked and it was
     wrong". Showing the removals is what makes the system auditable rather
     than merely trustworthy-looking.
+
+    The same goes for a claim withheld for being off topic: it is TRUE of its
+    passage, so it is listed as removed with that reason rather than dropped,
+    and if nothing on topic is left the reason says the policies do not
+    appear to contain what was asked.
 
 WHY OVER-ABSTENTION IS ALSO A FAILURE
     A system that refuses everything scores perfectly on hallucination rate
@@ -61,6 +67,16 @@ class AbstentionDecision:
         """Removed claims that simply could not be confirmed either way."""
         return [v for v in self.removed if v.status is not VerdictStatus.REFUTED]
 
+    @property
+    def off_topic(self) -> list[ClaimVerdict]:
+        """Removed claims that were TRUE but did not answer the question.
+
+        Kept apart from refuted and unsupported ones: nothing is wrong with
+        these claims, they are simply not what was asked, and saying so is
+        more honest than calling them unverified.
+        """
+        return [v for v in self.removed if v.checks.relevant is False]
+
 
 def should_keep(verdict: ClaimVerdict, config: Config | None = None) -> bool:
     """Does this claim survive verification?
@@ -69,11 +85,17 @@ def should_keep(verdict: ClaimVerdict, config: Config | None = None) -> bool:
     and confidently so. NEUTRAL means the evidence did not settle it, which is
     not the same as the claim being true, and REFUTED means the cited text
     says otherwise.
+
+    A supported claim the relevance gate marked off topic (`relevant is
+    False`) is not kept either: true, but not an answer to the question. A
+    claim the gate never judged (`relevant is None`) is unaffected, which is
+    what keeps saved runs and gate-off runs behaving as before.
     """
     config = config or get_config()
     return (
         verdict.status is VerdictStatus.SUPPORTED
         and verdict.score >= config.abstention.min_claim_score
+        and verdict.checks.relevant is not False
     )
 
 
@@ -86,30 +108,36 @@ def decide(
     config = config or get_config()
     cfg = config.abstention
 
-    # --- Nothing retrieved, or nothing relevant enough ---------------------
-    # Checked before looking at claims: if the corpus does not cover the
-    # question, any claims produced were not grounded in anything worth
-    # standing behind, whatever the verifier made of them.
-    if retrieved is not None:
-        if not retrieved:
-            return AbstentionDecision(
-                abstained=True,
-                reason="No relevant policy passages were found for this question.",
-                kept=[],
-                removed=list(verdicts),
-            )
-        best = max(r.score for r in retrieved)
-        if best < cfg.min_retrieval_score:
-            return AbstentionDecision(
-                abstained=True,
-                reason=(
-                    f"The policy corpus does not appear to cover this question "
-                    f"(best passage scored {best:.2f}, below the "
-                    f"{cfg.min_retrieval_score:.2f} required)."
-                ),
-                kept=[],
-                removed=list(verdicts),
-            )
+    # --- Nothing retrieved -------------------------------------------------
+    # Checked before looking at claims: with no passage at all, any claims
+    # produced were not grounded in anything worth standing behind.
+    #
+    # There used to be a second check here: decline if the best passage's
+    # similarity was below `min_retrieval_score` (0.25). It was removed
+    # after measuring it (scripts/calibrate.py --retrieval, tuning half
+    # only, Nov 2026), because it never fired and no value of it is safe:
+    #   - the lowest best-passage score of ANY question measured, gibberish
+    #     included, was 0.31, so 0.25 could never trigger;
+    #   - in-domain unanswerable questions score like answerable ones (7
+    #     tuning unanswerable: 0.46-0.65; 26 answerable: 0.46-0.76), so no
+    #     retrieval threshold separates them - the verifier and the
+    #     relevance gate are what catch those;
+    #   - off-topic and gibberish questions (14 written for the script)
+    #     scored 0.31-0.57, overlapping the lowest answerable question
+    #     (0.46), and all 14 were ALREADY declined end to end by the later
+    #     stages (no claims made, or the relevance gate);
+    #   - the check ran after generation, so it never saved any time.
+    # A threshold high enough to fire (about 0.43) would sit 0.03-0.06 from
+    # real answerable questions, buy no measured gain, and risk declining
+    # good answers. The setting is kept in config.py, unread, so existing
+    # config.yaml files still load; see AbstentionConfig.
+    if retrieved is not None and not retrieved:
+        return AbstentionDecision(
+            abstained=True,
+            reason="No relevant policy passages were found for this question.",
+            kept=[],
+            removed=list(verdicts),
+        )
 
     # --- The model produced nothing ---------------------------------------
     if not verdicts:
@@ -132,6 +160,21 @@ def decide(
     decision = AbstentionDecision(abstained=True, reason=None, kept=[], removed=removed)
     refuted = len(decision.refuted)
     total = len(verdicts)
+
+    # The claims were true but none of them answered the question: the
+    # corpus does not contain what was asked. Say that, rather than the
+    # misleading "could not be verified".
+    off_topic = len(decision.off_topic)
+    if off_topic and not kept:
+        others = total - off_topic
+        extra = f" ({others} other claim(s) could not be verified.)" if others else ""
+        decision.removed = removed + kept
+        decision.reason = (
+            f"The policies do not appear to contain what was asked: {off_topic} "
+            f"statement(s) found were supported by the policy but do not answer "
+            f"the question.{extra} They are shown below rather than hidden."
+        )
+        return decision
 
     if refuted:
         detail = (

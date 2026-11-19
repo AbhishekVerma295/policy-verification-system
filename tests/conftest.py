@@ -43,10 +43,16 @@ class FakeLLM:
     def __init__(self, responses: list[str] | None = None):
         self.responses = list(responses or [])
         self.prompts: list[str] = []
+        # The schema passed with each call (None when the caller gave none),
+        # so a test can assert that structured output was actually requested.
+        self.schemas: list[dict | None] = []
         self._index = 0
 
-    def generate(self, prompt: str, **kwargs) -> str:
+    def generate(
+        self, prompt: str, *, json_mode: bool = True, schema: dict | None = None
+    ) -> str:
         self.prompts.append(prompt)
+        self.schemas.append(schema)
         if not self.responses:
             return json.dumps({"claims": []})
         # Repeat the last response once the scripted ones run out, so a test

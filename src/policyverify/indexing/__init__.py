@@ -3,7 +3,9 @@ Indexing - splitting documents into chunks and making them searchable.
 
 chunk.py splits a Document on its section boundaries so that each chunk is a
 whole citable thing, which is what makes a citation like "4.2" point at
-something exact. store.py wraps Chroma, the vector database that holds them.
+something exact. store.py wraps Chroma, the vector database that holds them. bm25.py is
+a small keyword index built from those same chunks, so retrieval can match
+exact terms as well as meaning (see retrieve.py for how the two are merged).
 
 One rule worth remembering, and enforced in store.py rather than trusted to
 memory: the index records which embedding model built it. If you rebuild with
@@ -14,6 +16,7 @@ store refuses to search a mismatched index instead of guessing.
 Built in Phase 2.
 """
 
+from policyverify.indexing.bm25 import BM25Index, tokenize
 from policyverify.indexing.chunk import (
     chunk_document,
     chunk_documents,
@@ -35,6 +38,7 @@ from policyverify.indexing.summarize import (
 )
 
 __all__ = [
+    "BM25Index",
     "COLLECTION_NAME",
     "Embedder",
     "IndexManifest",
@@ -48,4 +52,5 @@ __all__ = [
     "embedding_text",
     "is_noise_section",
     "split_long_text",
+    "tokenize",
 ]

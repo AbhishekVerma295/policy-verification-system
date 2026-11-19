@@ -35,6 +35,16 @@ from dataclasses import dataclass, field
 # extraction often produces.
 _NUMBER_RE = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*(%?)")
 
+# A clock time: "7:30", "07.30 pm", "9:00 a.m.". With a colon it is always a
+# time; with a dot only when am/pm follows, because "12.10" on its own is a
+# clause number. Without this, "7:30 pm" was read as the numbers 7 and 30,
+# and a correct dinner time was vetoed because "30" is not in "07.30 pm".
+_TIME_RE = re.compile(
+    r"(?<![\d.])(\d{1,2})(?::(\d{2})|\.(\d{2})(?=\s*[ap]\.?\s?m\b))"
+    r"(?:\s*([ap])\.?\s?m\b\.?)?",
+    re.IGNORECASE,
+)
+
 # Numbers this small and common are almost always list markers, clause
 # numbering or ordinals ("(i) 1.", "within 2 of"), not facts being asserted.
 # Flagging them produced noise without catching anything real.
@@ -43,14 +53,40 @@ _IGNORE_BARE_VALUES = {0.0, 1.0, 2.0}
 
 @dataclass(frozen=True)
 class Number:
-    """One numeric value found in text."""
+    """One numeric value found in text.
+
+    A clock time is kept as one value (`is_time`, `value` = hour * 60 +
+    minute, `meridiem` "a"/"p" or None when not written), so "7:30 pm" is
+    compared as a time rather than as the two numbers 7 and 30.
+    """
 
     value: float
     is_percent: bool
     raw: str
+    is_time: bool = False
+    meridiem: str | None = None
+
+    def _clock(self) -> tuple[int, int]:
+        """(hour on a 12-hour clock, minute) of a time."""
+        hour, minute = divmod(int(self.value), 60)
+        return hour % 12, minute
 
     def matches(self, other: Number) -> bool:
         """Same quantity, allowing for formatting differences."""
+        if self.is_time and other.is_time:
+            # "7:30 pm", "07.30 pm" and "19:30" are the same time. A missing
+            # am/pm on either side is not held against it; a different one is.
+            if self.meridiem and other.meridiem and self.meridiem != other.meridiem:
+                return False
+            return self._clock() == other._clock()
+        if self.is_time or other.is_time:
+            # A time against a plain number: only "07.30" written without
+            # am/pm, which is how some timetables print 7:30.
+            time, plain = (self, other) if self.is_time else (other, self)
+            if plain.is_percent:
+                return False
+            hour, minute = divmod(int(time.value), 60)
+            return abs(plain.value - (hour + minute / 100)) < 1e-9
         if self.is_percent != other.is_percent:
             return False
         # Exact comparison. Policy numbers are thresholds, not measurements -
@@ -70,24 +106,52 @@ class NumericCheck:
 
 
 def extract_numbers(text: str) -> list[Number]:
-    """Every numeric value in `text`, in order of appearance."""
-    numbers: list[Number] = []
+    """Every numeric value in `text`, in order of appearance.
+
+    Clock times are found first and taken out, so their parts are not also
+    read as separate numbers.
+    """
+    found: list[tuple[int, Number]] = []
+    taken: list[tuple[int, int]] = []
+    for match in _TIME_RE.finditer(text):
+        hour = int(match.group(1))
+        minute = int(match.group(2) or match.group(3))
+        if hour > 23 or minute > 59:
+            continue
+        meridiem = match.group(4).lower() if match.group(4) else None
+        found.append(
+            (
+                match.start(),
+                Number(
+                    value=float(hour * 60 + minute),
+                    is_percent=False,
+                    raw=match.group(0).strip(),
+                    is_time=True,
+                    meridiem=meridiem,
+                ),
+            )
+        )
+        taken.append(match.span())
     for match in _NUMBER_RE.finditer(text):
+        if any(start <= match.start() < end for start, end in taken):
+            continue
         digits, percent = match.group(1), match.group(2)
         try:
             value = float(digits.replace(",", ""))
         except ValueError:  # pragma: no cover - regex should prevent this
             continue
-        numbers.append(
-            Number(value=value, is_percent=percent == "%", raw=match.group(0).strip())
+        found.append(
+            (match.start(), Number(value=value, is_percent=percent == "%", raw=match.group(0).strip()))
         )
-    return numbers
+    return [number for _, number in sorted(found, key=lambda pair: pair[0])]
 
 
 def significant(numbers: list[Number]) -> list[Number]:
     """Drop values that are list markers rather than asserted facts."""
     return [
-        n for n in numbers if n.is_percent or n.value not in _IGNORE_BARE_VALUES
+        n
+        for n in numbers
+        if n.is_percent or n.is_time or n.value not in _IGNORE_BARE_VALUES
     ]
 
 

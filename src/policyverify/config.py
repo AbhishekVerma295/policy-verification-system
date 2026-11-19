@@ -114,6 +114,31 @@ class RetrievalConfig(BaseModel):
     # multiple of top_k. Needs to be > 1 or capping would just leave gaps.
     oversample_factor: int = 4
 
+    # Hybrid search: run a keyword (BM25) search alongside the embedding
+    # search and merge the two rankings. Embeddings alone are touchy about
+    # wording on this corpus - "What is minimum marks needed to pass a
+    # course ?" ranked the section that says "To 'Pass' a course ... 50%"
+    # about 10th. See indexing/bm25.py and retrieve.py. False = embedding
+    # search only, exactly as before.
+    hybrid_search: bool = True
+    # The constant k in Reciprocal Rank Fusion, the merge rule: each search
+    # gives a passage 1 / (rrf_k + its rank) and the two are added. A larger
+    # value flattens the difference between rank 1 and rank 10, so agreement
+    # between the two searches matters more than either one's top pick. 60 is
+    # the value from the original paper (Cormack et al., SIGIR 2009) and is
+    # the usual default.
+    rrf_k: int = 60
+    # How many candidates each search contributes before merging. Large
+    # enough that a passage one search ranks badly can still be rescued by
+    # the other; the per-section cap and top_k are applied after the merge.
+    hybrid_candidate_pool: int = 50
+    # BM25's two knobs. k1: how quickly repeating a word stops adding to the
+    # score (higher = repetition keeps counting for longer). b: how much
+    # long passages are penalised for having more words (0 = not at all,
+    # 1 = fully). 1.5 and 0.75 are the textbook defaults.
+    bm25_k1: float = 1.5
+    bm25_b: float = 0.75
+
     # Entity re-ranking (see entities.py). A candidate that names the same
     # people as the question (parent, warden, hosteller...) is ranked by
     #     similarity + min(entity_boost_cap, entity_boost_weight * idf)
@@ -148,11 +173,20 @@ class LLMConfig(BaseModel):
     timeout_seconds: int = 300
     num_ctx: int = 8192
     # The most tokens the model may write in one reply. A normal answer is a
-    # few hundred. Without a cap, a model in JSON mode can fall into emitting
-    # output forever - measured: one adversarial question ran for 25 minutes
-    # and never returned. A reply cut off here fails to parse, is retried
-    # once, and is then reported as an error, which is the right outcome.
-    max_tokens: int = 800
+    # few hundred; the prompt asks for at most 6 claims. Without a cap, a
+    # model in JSON mode can fall into emitting output forever - measured: one
+    # adversarial question ran for 25 minutes and never returned. It was 800,
+    # which cut real replies off mid-claim (an answer of many long claims runs
+    # past it); 1500 leaves room for six full claims. A reply that is still
+    # cut off is no longer thrown away: generate.py keeps every claim that was
+    # completed before the cut.
+    max_tokens: int = 1500
+    # The most characters of passage text put in one prompt. Whole passages
+    # are shown (never cut in the middle); if the total would be larger than
+    # this, the lowest-ranked passages are left out instead. 16000 characters
+    # is roughly 4000 tokens, which with the instructions and a full-length
+    # reply (max_tokens) still fits inside num_ctx.
+    max_passage_chars: int = 16000
 
     # Qwen3 is a hybrid reasoning model: it can emit "thinking" tokens before
     # its answer, and Ollama returns those in a SEPARATE field. Combined with
@@ -183,8 +217,29 @@ class NLIConfig(BaseModel):
 
     model_name: str = "MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli"
     device: str = "cpu"
-    # An entailment score below this is not treated as support.
+    # An entailment score below this is not treated as support. Checked with
+    # scripts/calibrate.py on the 44 tuning claims (Nov 2026): the scores are
+    # nearly all near 0 or near 1 (19 below 0.2, 23 above 0.8, 2 between),
+    # so any value from 0.3 to 0.5 accepts exactly the same claims, and
+    # higher values only start trading true claims for the single false one
+    # in the 0.6-0.7 band. Left at 0.5; see abstention.min_claim_score.
     entailment_threshold: float = 0.5
+    # How strongly one cited section must contradict a claim, while another
+    # cited section supports it, before the claim is withheld as "the sources
+    # disagree". Stricter than entailment_threshold on purpose: a weak
+    # contradiction from a loosely related section is common and harmless,
+    # and treating it as a conflict would throw away well-supported claims.
+    # Only applies across DIFFERENT citation IDs - see verifier.py.
+    conflict_threshold: float = 0.9
+    # The claim is scored against single sentences of the passage and against
+    # runs of up to this many neighbouring sentences. 1 = sentences only.
+    # Measured on the tuning claims: 1 missed a true claim that joins two
+    # sentences (recall 87.5%); 2 and 3 both reached 91.7%. 3 is kept because
+    # it is what the SummaC-style probe validated, and it cost under 1 s/claim.
+    max_window_sentences: int = 3
+    # How many (sentence, claim) pairs the model scores at once. Batching
+    # amortises the per-call overhead across many short pairs.
+    batch_size: int = 16
 
 
 class VerificationConfig(BaseModel):
@@ -206,13 +261,75 @@ class AbstentionConfig(BaseModel):
     questions would only prove it works on the questions you tuned it for.
     """
 
+    # A SUPPORTED claim is kept only if its score is at least this. Checked
+    # with scripts/calibrate.py on the tuning claims (Nov 2026) and left at
+    # 0.5: 23 of the 25 accepted tuning claims score above 0.8; raising it to
+    # 0.7 would drop the one false claim accepted (scored 0.64) but also a
+    # true one (0.53), and replaying the latest tuning run, it would turn one
+    # correct answer (num-016, best claim 0.69) into a refusal while the one
+    # hallucinated answer scored 0.96 and would stay. One claim either way is
+    # not evidence enough to move it. Equal to nli.entailment_threshold, so
+    # in practice it is that threshold that decides.
     min_claim_score: float = 0.5
     # If fewer than this many claims survive checking, abstain entirely rather
     # than giving a half-answer.
     min_supported_claims: int = 1
-    # If the best retrieved passage is weaker than this, the corpus probably
-    # does not cover the question at all.
+    # RETIRED - no longer read by anything. It was "decline if the best
+    # retrieved passage scores below this"; measured, it never fired and no
+    # value separates answerable from unanswerable questions (see the note
+    # in abstain.decide). Kept only so config.yaml files that still set it
+    # load without error; the line can be deleted from config.yaml.
     min_retrieval_score: float = 0.25
+
+
+class RelevanceConfig(BaseModel):
+    """The relevance gate: does a verified claim answer the question asked?
+
+    Verification proves a claim is TRUE of its passage; it never asks whether
+    the claim is what the user wanted. "Who is the current Vice Chancellor?"
+    -> "The Vice-Chancellor will deliver the welcome address" is true, cited
+    and on a nearby topic, and no use as an answer. The gate computes how
+    close the verified claims are to the question and, unless that is clear
+    either way, asks the language model one yes/no question.
+
+    All three thresholds were chosen on the TUNING questions and the fresh
+    questions only - never the held-out half - so they are somewhat
+    optimistic for those same questions. See verify/relevance.py.
+
+    Re-checked in Nov 2026 by replaying the latest tuning run: every answer
+    that reached the gate had a best similarity between 0.565 and 0.811, so
+    the language model decided all of them and neither cut-off was used.
+    Two unanswerable questions the judge rightly rejected scored 0.75 and
+    0.81, so lowering `similarity_accept` would let them through; raising
+    `similarity_reject` past 0.59 would block a correct answer. The fallback
+    was never needed in that run, so there is nothing to tune it on. All
+    three are left as they were.
+    """
+
+    # False = gate off: every verified claim counts as relevant, exactly as
+    # before the gate existed.
+    enabled: bool = True
+    # Cosine similarity (question with the retrieval query prefix, against the
+    # claim text) at or above which the answer is on topic without asking the
+    # model. Deliberately high: on the replayed answers, off-topic claims that
+    # merely repeat the question's words (e.g. "the late fee is calculated
+    # from the date of payment", asked for the fee amount) reached 0.81, so
+    # anything under about 0.85 still needs the model's opinion.
+    similarity_accept: float = 0.85
+    # Similarity below which the claim is off topic without asking the model.
+    # No good answer scored under 0.574; the lowest off-topic ones were far
+    # lower still, so this saves a model call and a mistake on the clear cases.
+    similarity_reject: float = 0.55
+    # Between the two thresholds the model is asked. If it cannot be used
+    # (unreachable, unusable reply) the answer is judged on similarity alone
+    # against this single cut-off, and the Answer records that the fallback
+    # happened. Low on purpose: similarity cannot tell a true-but-off-topic
+    # claim from a good one in the 0.6-0.8 band, and a cut-off of 0.65
+    # blocked 5 of 52 good answers while catching no more than 0.60 did.
+    similarity_fallback: float = 0.60
+    # Longest claim list shown to the model, most similar first, so the prompt
+    # stays short.
+    judge_max_claims: int = 6
 
 
 class Config(BaseModel):
@@ -226,6 +343,7 @@ class Config(BaseModel):
     nli: NLIConfig = Field(default_factory=NLIConfig)
     verification: VerificationConfig = Field(default_factory=VerificationConfig)
     abstention: AbstentionConfig = Field(default_factory=AbstentionConfig)
+    relevance: RelevanceConfig = Field(default_factory=RelevanceConfig)
 
     def fingerprint(self) -> dict[str, str]:
         """A short summary of the settings that affect results.

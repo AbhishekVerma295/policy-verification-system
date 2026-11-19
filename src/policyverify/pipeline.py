@@ -1,7 +1,7 @@
 """
 pipeline.py - the whole system, end to end, in one function.
 
-    question -> retrieve -> generate -> verify -> decide -> Answer
+    question -> retrieve -> generate -> verify -> relevance gate -> decide -> Answer
 
 This is the only entry point anything outside the library should need. The
 CLI, the Streamlit UI and the evaluation harness all call `answer_question()`,
@@ -22,10 +22,26 @@ from collections.abc import Callable
 from policyverify.abstain import decide
 from policyverify.config import Config, get_config
 from policyverify.generate import generate_answer_draft
-from policyverify.llm import LLMBackend
+from policyverify.indexing import VectorStore
+from policyverify.llm import LLMBackend, get_llm
 from policyverify.retrieve import retrieve
-from policyverify.schema import Answer, PolicyType, RetrievedChunk, Timings
+from policyverify.schema import (
+    Answer,
+    ClaimVerdict,
+    PolicyType,
+    RetrievedChunk,
+    Timings,
+)
 from policyverify.verify import verify_claims
+from policyverify.verify.relevance import (
+    RelevanceReport,
+    assess_relevance,
+    similarity_for_store,
+)
+
+# The relevance gate as the pipeline sees it: (question, verdicts) -> report.
+# A plain callable so tests can pass a one-line fake.
+RelevanceFn = Callable[[str, list[ClaimVerdict]], RelevanceReport]
 
 
 class _Stopwatch:
@@ -38,6 +54,20 @@ class _Stopwatch:
         return (time.perf_counter() - self._start) * 1000.0
 
 
+def _default_relevance(store, llm: LLMBackend | None, config: Config) -> RelevanceFn:
+    """The real relevance gate: similarity from the store's embedder, the
+    judge from the same language model that wrote the claims."""
+    similarity = similarity_for_store(store)
+    judge = llm or get_llm(config)
+
+    def gate(question: str, verdicts: list[ClaimVerdict]) -> RelevanceReport:
+        return assess_relevance(
+            question, verdicts, llm=judge, similarity=similarity, config=config
+        )
+
+    return gate
+
+
 def answer_question(
     question: str,
     k: int | None = None,
@@ -48,6 +78,7 @@ def answer_question(
     llm: LLMBackend | None = None,
     nli=None,
     on_stage: Callable[[str], None] | None = None,
+    relevance: RelevanceFn | None = None,
 ) -> Answer:
     """Answer one policy question, with every claim verified.
 
@@ -58,9 +89,17 @@ def answer_question(
     `on_stage`, if given, is called with "retrieve", "generate", "verify" and
     "decide" as each stage starts - so an interface can show where a slow
     question has got to. It only observes; it cannot change the result.
+
+    `relevance`, if given, replaces the relevance gate (see
+    verify/relevance.py): a callable taking the question and the verified
+    claims and returning a `RelevanceReport`. Tests pass a fake; normally it
+    is built from the store's embedder and the language model.
     """
     config = config or get_config()
     timings = Timings()
+    # One store for retrieval, verification and the relevance gate. Left to
+    # themselves each would build its own and reload the embedding model.
+    store = store or VectorStore(config)
 
     def stage(name: str) -> None:
         if on_stage is not None:
@@ -86,9 +125,19 @@ def answer_question(
     timings.generate_ms = watch.stop()
 
     # --- 3. verify -------------------------------------------------------
+    # Two questions are asked of every claim: is it TRUE of the passage it
+    # cites (the NLI checks), and does it ANSWER the question (the relevance
+    # gate). The gate runs here, inside the verify stage, and its time is
+    # recorded both on its own and as part of verify_ms.
     stage("verify")
     watch = _Stopwatch()
     verdicts = verify_claims(draft.claims, chunks, nli=nli, store=store, config=config)
+    gate_watch = _Stopwatch()
+    if relevance is None:
+        relevance = _default_relevance(store, llm, config)
+    report = relevance(question, verdicts)
+    verdicts = report.verdicts
+    timings.relevance_ms = gate_watch.stop()
     timings.verify_ms = watch.stop()
 
     # --- 4. decide -------------------------------------------------------
@@ -98,6 +147,7 @@ def answer_question(
     answer = Answer(
         question=question,
         university_filter=university,
+        relevance_judge_failed=report.judge_failed,
         claims_kept=decision.kept,
         claims_removed=decision.removed,
         abstained=decision.abstained,

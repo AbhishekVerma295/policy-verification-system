@@ -34,6 +34,7 @@ from policyverify.evalset import Split, load_evalset, split_items  # noqa: E402
 from policyverify.evaluate import (  # noqa: E402
     Outcome,
     append_result,
+    format_comparison,
     format_report,
     load_results,
     new_run_id,
@@ -66,6 +67,11 @@ def main() -> int:
         action="store_true",
         help="with --report: score the same run as if verification were switched off",
     )
+    parser.add_argument(
+        "--evalset",
+        default=None,
+        help="question file to use instead of eval/adversarial.jsonl",
+    )
     args = parser.parse_args()
 
     if args.report:
@@ -75,13 +81,17 @@ def main() -> int:
         if args.category:
             results = [r for r in results if r.category == args.category]
         if args.baseline:
-            results = rescore_without_verification(results, load_evalset())
+            results = rescore_without_verification(results, load_evalset(args.evalset))
             print("BASELINE - the same generations with verification switched off\n")
-        print(format_report(summarise_results(results), results))
+        summary = summarise_results(results)
+        print(format_report(summary, results))
+        if not args.baseline:
+            baseline = summarise_results(rescore_without_verification(results, load_evalset(args.evalset)))
+            print("\n" + format_comparison(summary, baseline))
         return 0
 
     config = get_config()
-    items = load_evalset()
+    items = load_evalset(args.evalset)
     if args.split != "all":
         items = split_items(items, Split(args.split))
     if args.category:
@@ -144,6 +154,15 @@ def main() -> int:
         )
 
     summary = summarise_results(results)
+    # The same generations scored as if nothing had been checked. Free to
+    # compute, because removed claims are kept in each Answer.
+    baseline = summarise_results(rescore_without_verification(results, load_evalset(args.evalset)))
+    summary["baseline_without_verification"] = {
+        "accuracy": baseline["accuracy"],
+        "hallucination_rate": baseline["hallucination_rate"],
+        "citation_accuracy": baseline["citation_accuracy"],
+        "abstention": baseline["abstention"],
+    }
     meta = {
         "run_id": run_id,
         "split": args.split,
@@ -156,6 +175,7 @@ def main() -> int:
 
     print("\n" + "=" * 74)
     print(format_report(summary, results))
+    print("\n" + format_comparison(summary, baseline))
     print("=" * 74)
     print(f"\nlog     {log_path}\nsummary {summary_path}")
     if args.split != "heldout" or args.sample or args.category or args.ids:

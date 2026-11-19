@@ -21,13 +21,24 @@ If a document has fewer than 2 lines that look like headings, the whole
 document becomes a single Section rather than failing. A document you can
 still cite by title beats one you crash on.
 
-Known limitation, found by running this against the real examination policy:
-some SRM documents also use Roman numerals ("II. ADMISSION TO EXAMINATIONS")
-as a third heading style, which neither pattern above catches. That content
-does not get lost - it folds into whichever heading came before it - but it
-means those particular sub-sections are citable only at a coarser grain than
-their own heading. Not fixed here: a Roman-numeral pattern risks a much
-worse problem, false positives on the word "I" alone.
+A third convention, Roman numerals ("II. ADMISSION TO EXAMINATIONS"), is
+used by SRM's examination policy. It used to go undetected - for fear of
+matching the word "I" - and the cost turned out to be large: everything
+from "V. DETENTION/CANCELLATION ..." to the end of Section A (hall tickets,
+question papers, conduct of examinations, malpractice, results, grievances,
+certificates) folded into ONE 42,000-character section, a fifth of the
+whole corpus, which the retriever (two chunks per section at most) could
+barely see into. Roman headings are now detected, strictly enough that "I"
+starting a sentence never matches; see _is_roman_heading(). The numeral
+becomes the section number, so "II. ADMISSION TO EXAMINATIONS" is cited as
+"II-admission_to_examinations".
+
+Table rows are never headings. extract.py writes each HTML table row as one
+line with cells joined by TABLE_CELL_SEPARATOR, and such a line is skipped
+by every detector here. Before that, the scholarship cell "95 Percentile and
+above" was read as heading number 95, and the page fell apart into dozens
+of 45-character sections; _is_numbered_heading() now also refuses a
+"heading" that is really a numeric band ("90 to 94.99 Percentile").
 """
 
 from __future__ import annotations
@@ -36,6 +47,7 @@ import hashlib
 import re
 from datetime import date
 
+from policyverify.ingest.extract import TABLE_CELL_SEPARATOR
 from policyverify.schema import Document, PolicyType, Section, SourceFormat
 
 # "4", "4.2", "4.2.1", "A.1" at the start of a line, followed by a space and
@@ -71,6 +83,25 @@ _INLINE_HEADING_RE = re.compile(r"(?:^|\s)(\d+(?:\.\d+)+)\s+([A-Z][A-Za-z][^:\n]
 
 _MAX_HEADING_LEN = 100
 
+# A Roman numeral from I to XXXIX, then "." or ")" and (optionally) the
+# heading text. Only I, V and X are accepted: C, D, L and M are Roman too,
+# but "C." and "D." start ordinary lettered lists far more often than they
+# number a heading. SRM's examination policy runs from I to XXVIII.
+_ROMAN_RE = re.compile(r"^(?=[IVX])(X{0,3}(?:IX|IV|V?I{0,3}))\s*[.)]\s*(.*)$")
+
+# An ALL CAPS Roman heading may be long: SRM's examination policy has
+# "VII. COLLECTION OF INTERNAL ASSESSMENT MARKS FOR THE THEORY OR PRACTICAL/
+# PURELY INTERNAL COURSES AND EXTERNAL ASSESSMENT MARKS PRACTICAL / CLINICAL
+# EXAMINATIONS" (147 characters). A numeral followed by that much capitals
+# is still unmistakably a heading; prose is never written in capitals.
+_MAX_ROMAN_CAPS_LEN = 180
+
+# The first word of a "heading" that is really a numeric band from a table
+# row: "95 Percentile and above", "90 to 94.99 Percentile", "85 and 89.99
+# Percentile", "95 Percentage and Above". A real numbered heading names a
+# topic; it does not start with a range word or a unit.
+_BAND_WORDS = {"to", "and", "or", "percentile", "percentage", "th", "st", "nd", "rd", "-", "–"}
+
 
 def promote_inline_headings(text: str) -> str:
     """Put mid-line numbered headings onto their own line.
@@ -82,7 +113,9 @@ def promote_inline_headings(text: str) -> str:
     """
     out = []
     for line in text.splitlines():
-        match = _INLINE_HEADING_RE.search(line)
+        # A table row is never split: "90 to 94.99 Percentile | Scholarship
+        # Name: ..." would otherwise look like heading 94.99.
+        match = None if TABLE_CELL_SEPARATOR in line else _INLINE_HEADING_RE.search(line)
         # Only act when the heading is genuinely mid-line. A heading already
         # at the start of its line is fine as it is.
         if match and match.start(1) > 0:
@@ -119,6 +152,8 @@ def _is_titlecase_majority(text: str, min_ratio: float = 0.5) -> bool:
 
 def _is_numbered_heading(line: str) -> tuple[str, str] | None:
     """If `line` looks like '4.2 Minimum Attendance', return (number, rest)."""
+    if TABLE_CELL_SEPARATOR in line:
+        return None  # a table row (see extract.py), never a heading
     m = _NUMBERED_RE.match(line)
     if not m:
         return None
@@ -130,11 +165,76 @@ def _is_numbered_heading(line: str) -> tuple[str, str] | None:
         return None
     if not _is_titlecase_majority(rest):
         return None
+    # "95 Percentile and above" is a table cell, not heading 95.
+    if rest.split()[0].lower() in _BAND_WORDS:
+        return None
     return number, rest
+
+
+def _is_roman_heading(line: str) -> tuple[str, str] | None:
+    """If `line` looks like 'II. ADMISSION TO EXAMINATIONS', return (numeral, heading).
+
+    Strict on purpose, because "I" is also an English word. All of these
+    must hold:
+      - a valid numeral I..XXXIX, immediately followed by "." or ")" -
+        so "I am a student" and a line that is just "I" never match;
+      - heading text after it that starts with a capital letter - so
+        "I. e. the student" and "I.e." never match;
+      - the text is ALL CAPS (up to _MAX_ROMAN_CAPS_LEN characters, a
+        trailing "." or ":" allowed), or it is a short Title Case phrase
+        that does not end like a sentence (".", "?").
+    A sentence such as "VI. The maximum number of such courses ..." (found
+    in SRM's attendance regulations) is mostly lower case and is rejected.
+    """
+    if TABLE_CELL_SEPARATOR in line:
+        return None
+    m = _ROMAN_RE.match(line)
+    if not m:
+        return None
+    numeral, rest = m.group(1), m.group(2).strip()
+    if not rest or not rest[0].isupper():
+        return None
+    letters = [c for c in rest if c.isalpha()]
+    if len(letters) >= 4 and all(c.isupper() for c in letters):
+        if len(rest) > _MAX_ROMAN_CAPS_LEN:
+            return None
+        return numeral, rest.rstrip(".:").strip().title()
+    if len(rest) > _MAX_HEADING_LEN or rest[-1] in ".?!" or len(letters) < 4:
+        return None
+    if not _is_titlecase_majority(rest):
+        return None
+    return numeral, rest.rstrip(":").strip()
+
+
+def join_lone_roman_numerals(text: str) -> str:
+    """Join a numeral left alone on its line to the caps heading below it.
+
+    The HTML of SRM's examination policy puts "V." and "DETENTION/
+    CANCELLATION OF CANDIDATURE FOR APPEARING IN THE EXAMINATION" in
+    separate elements, so they reach us as two lines. Only joined when the
+    numeral has its "." or ")" and the next line is itself an ALL CAPS
+    heading, so a lone "I" is never touched. Like promote_inline_headings()
+    this only moves a line break; no characters are added or lost.
+    """
+    lines = text.splitlines()
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        m = _ROMAN_RE.match(line.strip())
+        if m and not m.group(2).strip() and i + 1 < len(lines) and _is_caps_heading(lines[i + 1].strip()):
+            out.append(f"{line.strip()} {lines[i + 1].strip()}")
+            i += 2
+            continue
+        out.append(line)
+        i += 1
+    return "\n".join(out)
 
 
 def _is_caps_heading(line: str) -> bool:
     """True for short, mostly-uppercase lines like a caps section header."""
+    if TABLE_CELL_SEPARATOR in line:
+        return False
     if len(line) > _MAX_HEADING_LEN or len(line) < 4:
         return False
     letters = [c for c in line if c.isalpha()]
@@ -147,7 +247,7 @@ def split_into_sections(text: str, title: str) -> list[Section]:
     """Split cleaned document text into sections at detected heading lines."""
     # Rescue headings that PDF extraction buried mid-line before looking for
     # them - see promote_inline_headings().
-    lines = promote_inline_headings(text).splitlines()
+    lines = join_lone_roman_numerals(promote_inline_headings(text)).splitlines()
 
     # (line index, section number if numbered, heading text)
     headings: list[tuple[int, str | None, str]] = []
@@ -155,7 +255,7 @@ def split_into_sections(text: str, title: str) -> list[Section]:
         line = raw_line.strip()
         if not line:
             continue
-        numbered = _is_numbered_heading(line)
+        numbered = _is_numbered_heading(line) or _is_roman_heading(line)
         if numbered:
             number, heading = numbered
             headings.append((i, number, heading))

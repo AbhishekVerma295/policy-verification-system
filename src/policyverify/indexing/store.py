@@ -29,6 +29,15 @@ in here are worth understanding, because both are load-bearing.
    actually wrote. Checking it against a string we assembled ourselves would
    mean partly verifying a claim against our own text, which is not
    verification at all.
+
+3. THE KEYWORD INDEX RIDES ALONG
+   Retrieval also runs a keyword (BM25) search - see indexing/bm25.py for why.
+   That index is not stored on disk: it is built in memory from the chunks
+   already in Chroma, the first time it is asked for, and kept on this object.
+   A few hundred chunks take well under a second. Because it is derived from
+   Chroma rather than saved separately, the two can never disagree about what
+   is in the corpus - and `build()` throws the cached copy away so a rebuild
+   in the same process cannot leave a stale keyword index behind.
 """
 
 from __future__ import annotations
@@ -40,6 +49,7 @@ from pathlib import Path
 
 from policyverify.config import Config, get_config
 from policyverify.entities import decode_entities, entity_weights
+from policyverify.indexing.bm25 import BM25Index
 from policyverify.schema import Chunk, PolicyType, RetrievedChunk
 
 COLLECTION_NAME = "policies"
@@ -108,7 +118,8 @@ def embedding_text(chunk: Chunk) -> str:
 
 
 def _chunk_from_row(chunk_id: str, text: str, meta: dict) -> Chunk:
-    """Rebuild a Chunk from what Chroma stores for it."""
+    """Rebuild a Chunk from one row as Chroma hands it back (the inverse of
+    Chunk.to_metadata). One place, so every reader rebuilds chunks the same way."""
     return Chunk(
         chunk_id=chunk_id,
         text=text,
@@ -122,6 +133,14 @@ def _chunk_from_row(chunk_id: str, text: str, meta: dict) -> Chunk:
         summary=meta.get("summary", ""),
         entities=sorted(decode_entities(meta.get("entities"))),
     )
+
+
+
+def _similarity_from_distance(distance: float) -> float:
+    """Chroma reports cosine *distance*; convert to a similarity in [0, 1] so
+    that "higher is better", which is what the abstention thresholds in
+    config.yaml assume."""
+    return max(0.0, min(1.0, 1.0 - float(distance)))
 
 
 class Embedder:
@@ -182,6 +201,8 @@ class VectorStore:
         self.index_dir = self.config.paths.resolve("index")
         self._client = None
         self._collection = None
+        # The keyword index, built on first use. See point 3 at the top.
+        self._bm25: BM25Index | None = None
 
     # -- plumbing ---------------------------------------------------------
 
@@ -260,6 +281,10 @@ class VectorStore:
         except Exception:
             pass  # nothing to delete on a first build
         self._collection = None
+        # The cached keyword index describes the corpus we are about to throw
+        # away. Drop it too; it will be rebuilt from the new chunks on the
+        # next search that needs it.
+        self._bm25 = None
 
         texts = [embedding_text(c) for c in chunks]
         vectors = self.embedder.encode_documents(texts)
@@ -294,11 +319,17 @@ class VectorStore:
         k: int | None = None,
         university: str | None = None,
         policy_type: PolicyType | str | None = None,
+        query_embedding: list[float] | None = None,
     ) -> list[RetrievedChunk]:
         """Find the chunks most relevant to `question`.
 
         The optional filters restrict the search rather than re-ranking it,
         so a filtered search cannot return a passage from the wrong source.
+
+        `query_embedding`, if given, must be `embed_query(question)`. Hybrid
+        retrieval embeds the question once and reuses the vector for both
+        this search and `similarities()`, rather than paying for the model
+        twice per question.
         """
         self.check_ready()
         top_k = k or self.config.retrieval.top_k
@@ -318,8 +349,11 @@ class VectorStore:
         elif len(clauses) > 1:
             where = {"$and": clauses}
 
+        if query_embedding is None:
+            query_embedding = self.embed_query(question)
+
         result = self.collection.query(
-            query_embeddings=[self.embedder.encode_query(question)],
+            query_embeddings=[query_embedding],
             n_results=top_k,
             where=where,
         )
@@ -334,12 +368,66 @@ class VectorStore:
             zip(ids, documents, metadatas, distances, strict=True)
         ):
             chunk = _chunk_from_row(cid, text, meta)
-            # Chroma reports cosine *distance*; convert to a similarity in
-            # [0, 1] so that "higher is better", which is what the abstention
-            # thresholds in config.yaml assume.
-            score = max(0.0, min(1.0, 1.0 - float(dist)))
+            score = _similarity_from_distance(dist)
             out.append(RetrievedChunk(chunk=chunk, score=score, rank=rank))
         return out
+
+    def embed_query(self, question: str) -> list[float]:
+        """The question's embedding, exactly as `search` would compute it."""
+        return self.embedder.encode_query(question)
+
+    def similarities(
+        self, query_embedding: list[float], chunk_ids: list[str]
+    ) -> dict[str, float]:
+        """Cosine similarity between a query vector and specific stored chunks.
+
+        WHY THIS EXISTS: hybrid retrieval can return a chunk that only the
+        keyword search found, so the embedding search never gave it a score.
+        But `RetrievedChunk.score` has one meaning everywhere - the cosine
+        similarity of the passage to the question, in [0, 1] - because the app
+        shows it to the user. A made-up number from the keyword side would
+        quietly mislead. So we look up the chunk's stored embedding and
+        compute the same similarity the embedding search would have.
+
+        The stored vectors and the query vector are both normalised to length
+        1, so the cosine similarity is just their dot product - the same
+        quantity Chroma turns into a distance, converted back the same way.
+        """
+        if not chunk_ids:
+            return {}
+        result = self.collection.get(ids=list(chunk_ids), include=["embeddings"])
+        out: dict[str, float] = {}
+        for cid, vector in zip(result["ids"], result["embeddings"], strict=True):
+            dot = sum(float(q) * float(v) for q, v in zip(query_embedding, vector, strict=True))
+            out[cid] = _similarity_from_distance(1.0 - dot)
+        return out
+
+    def all_chunks(self) -> list[Chunk]:
+        """Every chunk in the index, sorted by chunk_id.
+
+        Sorted because Chroma promises no row order (see get_by_citation), and
+        the keyword index built from this list breaks score ties by position -
+        an order that changed between runs would change results between runs.
+        """
+        result = self.collection.get(include=["documents", "metadatas"])
+        chunks = [
+            _chunk_from_row(cid, text, meta)
+            for cid, text, meta in zip(
+                result["ids"], result["documents"], result["metadatas"], strict=True
+            )
+        ]
+        return sorted(chunks, key=lambda c: c.chunk_id)
+
+    def bm25_index(self) -> BM25Index:
+        """The keyword index over every stored chunk, built on first use.
+
+        Cached on this object, and dropped by `build()`. See point 3 at the
+        top of this module.
+        """
+        if self._bm25 is None:
+            cfg = self.config.retrieval
+            self._bm25 = BM25Index(self.all_chunks(), k1=cfg.bm25_k1, b=cfg.bm25_b)
+        return self._bm25
 
     def count(self) -> int:
         return int(self.collection.count())
@@ -360,11 +448,12 @@ class VectorStore:
         `#1`, `#2`..., so sorting on that suffix restores document order.
         """
         result = self.collection.get(where={"citation_id": citation_id})
-        chunks = []
-        for cid, text, meta in zip(
-            result["ids"], result["documents"], result["metadatas"], strict=True
-        ):
-            chunks.append(_chunk_from_row(cid, text, meta))
+        chunks = [
+            _chunk_from_row(cid, text, meta)
+            for cid, text, meta in zip(
+                result["ids"], result["documents"], result["metadatas"], strict=True
+            )
+        ]
 
         def piece_number(chunk: Chunk) -> tuple[int, str]:
             """Sort key: the integer after the final '#', then the id itself.
