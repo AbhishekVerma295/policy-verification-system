@@ -34,7 +34,7 @@ from policyverify.generate import GenerationError  # noqa: E402
 from policyverify.indexing import IndexMismatchError, VectorStore  # noqa: E402
 from policyverify.llm import LLMError, get_llm  # noqa: E402
 from policyverify.pipeline import answer_question  # noqa: E402
-from policyverify.retrieve import retrieve  # noqa: E402
+from policyverify.retrieve import query_audience, retrieve  # noqa: E402
 from policyverify.schema import Answer, ClaimVerdict, VerdictStatus  # noqa: E402
 from policyverify.verify import NLIChecker  # noqa: E402
 from policyverify.verify.verifier import policy_says  # noqa: E402
@@ -326,15 +326,24 @@ def draw_answer(answer: Answer, passages: list, store: VectorStore) -> None:
     with st.expander(
         f"Retrieved passages ({len(passages)})", icon=":material/search:"
     ):
+        audience = query_audience(answer.question, store.config, store)
         st.caption(
             "What the search returned for this question. The model may only use, "
-            "and only cite, these."
+            "and only cite, these. "
+            + (
+                f"Searched passages written for: **{', '.join(sorted(audience))}**."
+                if audience
+                else "Searched passages for every audience."
+            )
         )
         for r in passages:
             boost = (
                 f" +{r.boost:.3f} ({', '.join(r.matched_entities)})" if r.boost else ""
             )
-            st.markdown(f"`{r.score:.3f}{boost}` &nbsp; **{r.chunk.citation_id}**")
+            readers = f" &nbsp; _for {', '.join(r.chunk.audience)}_" if r.chunk.audience else ""
+            st.markdown(
+                f"`{r.score:.3f}{boost}` &nbsp; **{r.chunk.citation_id}**{readers}"
+            )
             st.caption(r.chunk.text[:400] + ("..." if len(r.chunk.text) > 400 else ""))
 
     with st.expander("Raw answer (JSON)", icon=":material/code:"):

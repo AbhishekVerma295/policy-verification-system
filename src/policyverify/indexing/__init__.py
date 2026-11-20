@@ -23,6 +23,11 @@ from policyverify.indexing.chunk import (
     is_noise_section,
     split_long_text,
 )
+from policyverify.indexing.classify import (
+    AudienceCache,
+    SectionClassifier,
+    classify_query,
+)
 from policyverify.indexing.store import (
     COLLECTION_NAME,
     Embedder,
@@ -38,7 +43,10 @@ from policyverify.indexing.summarize import (
 )
 
 __all__ = [
+    "AudienceCache",
     "BM25Index",
+    "SectionClassifier",
+    "classify_query",
     "COLLECTION_NAME",
     "Embedder",
     "IndexManifest",

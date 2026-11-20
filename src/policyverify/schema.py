@@ -27,6 +27,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from policyverify.entities import encode_entities
 
+# Who a section can be for. Defined here, beside Chunk, because the vector
+# store's metadata has one field per label; indexing/classify.py uses it.
+AUDIENCE_LABELS: tuple[str, ...] = ("student", "parent_visitor", "staff")
+
 # ---------------------------------------------------------------------------
 # Contract 1: the citation ID
 # ---------------------------------------------------------------------------
@@ -310,6 +314,10 @@ class Chunk(BaseModel):
     # Who this chunk is about (parent, warden, hosteller...), extracted from
     # its own text and heading. Used to re-rank. See entities.py.
     entities: list[str] = Field(default_factory=list)
+    # Who the section is FOR: some of "student", "parent_visitor", "staff".
+    # Classified at index time (indexing/classify.py) and used to filter
+    # retrieval. Empty means unknown, which matches every question.
+    audience: list[str] = Field(default_factory=list)
 
     @field_validator("citation_id")
     @classmethod
@@ -321,7 +329,7 @@ class Chunk(BaseModel):
         """The parsed citation ID for this chunk."""
         return CitationID.parse(self.citation_id)
 
-    def to_metadata(self) -> dict[str, str]:
+    def to_metadata(self) -> dict[str, str | bool]:
         """Flatten to the metadata dict the vector store keeps beside the text.
 
         Chroma only accepts flat primitives (str, int, float, bool) as metadata,
@@ -340,6 +348,15 @@ class Chunk(BaseModel):
             "summary": self.summary,
             # Chroma metadata is flat, so the set is one "|a|b|" string.
             "entities": encode_entities(self.entities),
+            "audience": encode_entities(self.audience),
+            # One boolean per audience as well: Chroma's `where` cannot test
+            # whether a string contains a value, but it can match a boolean.
+            # Unknown audience (empty) is True for every label, so an
+            # unclassified chunk is never filtered out.
+            **{
+                f"aud_{label}": (not self.audience) or label in self.audience
+                for label in AUDIENCE_LABELS
+            },
         }
 
 

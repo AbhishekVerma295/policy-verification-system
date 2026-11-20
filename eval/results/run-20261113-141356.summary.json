@@ -1,0 +1,84 @@
+{
+  "meta": {
+    "run_id": "run-20261113-141356",
+    "split": "all",
+    "category": null,
+    "sample": null,
+    "wall_seconds": 404.8,
+    "config": {
+      "llm_model": "qwen2.5:3b",
+      "llm_backend": "ollama",
+      "llm_temperature": "0.0",
+      "embedding_model": "BAAI/bge-base-en-v1.5",
+      "nli_model": "MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli",
+      "top_k": "6",
+      "min_claim_score": "0.5"
+    }
+  },
+  "summary": {
+    "items": 8,
+    "scored": 8,
+    "errors": 0,
+    "accuracy": 0.625,
+    "abstention": {
+      "unanswerable_items": 0,
+      "correct_abstention_rate": null,
+      "answerable_items": 8,
+      "false_abstention_rate": 0.25
+    },
+    "citation_accuracy": 0.8333,
+    "hallucination_rate": 0.125,
+    "claims": {
+      "generated": 8,
+      "kept": 6,
+      "removed": 2,
+      "removal_rate": 0.25,
+      "citation_precision": 0.8333,
+      "citation_recall": 0.625
+    },
+    "latency": {
+      "retrieve": {
+        "mean_ms": 2800.8,
+        "median_ms": 187.5,
+        "p95_ms": 20533.1
+      },
+      "generate": {
+        "mean_ms": 41873.6,
+        "median_ms": 34169.2,
+        "p95_ms": 66378.3
+      },
+      "verify": {
+        "mean_ms": 5881.4,
+        "median_ms": 4352.8,
+        "p95_ms": 11331.5
+      },
+      "total": {
+        "mean_ms": 50555.7,
+        "median_ms": 49635.8,
+        "p95_ms": 77848.9
+      }
+    },
+    "outcomes": {
+      "correct": 5,
+      "false_abstention": 2,
+      "wrong_value": 1
+    },
+    "by_category": {
+      "cross_policy": {
+        "items": 1,
+        "passed": 0,
+        "accuracy": 0.0
+      },
+      "negation_exception": {
+        "items": 3,
+        "passed": 2,
+        "accuracy": 0.6667
+      },
+      "numeric": {
+        "items": 4,
+        "passed": 3,
+        "accuracy": 0.75
+      }
+    }
+  }
+}

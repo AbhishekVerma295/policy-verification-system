@@ -75,6 +75,11 @@ class IndexManifest:
     # IDF weight of each entity over this index's chunks. See entities.py.
     # Empty for an index built before entities existed: no boost is applied.
     entity_weights: dict[str, float] = field(default_factory=dict)
+    # True when the chunks carry audience labels and aud_* metadata (see
+    # indexing/classify.py). An older index has neither, and filtering on a
+    # metadata field that does not exist would match NOTHING - so retrieval
+    # only filters by audience when this is set.
+    audience_classified: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -85,6 +90,7 @@ class IndexManifest:
             "built_at": self.built_at,
             "chunking": self.chunking,
             "entity_weights": self.entity_weights,
+            "audience_classified": self.audience_classified,
         }
 
     @classmethod
@@ -97,6 +103,7 @@ class IndexManifest:
             built_at=data["built_at"],
             chunking=data.get("chunking", {}),
             entity_weights=data.get("entity_weights", {}),
+            audience_classified=data.get("audience_classified", False),
         )
 
 
@@ -132,6 +139,7 @@ def _chunk_from_row(chunk_id: str, text: str, meta: dict) -> Chunk:
         # Both absent in an index built before they existed.
         summary=meta.get("summary", ""),
         entities=sorted(decode_entities(meta.get("entities"))),
+        audience=sorted(decode_entities(meta.get("audience"))),
     )
 
 
@@ -304,6 +312,7 @@ class VectorStore:
             built_at=datetime.now(UTC).isoformat(timespec="seconds"),
             chunking=self.config.chunking.model_dump(),
             entity_weights=entity_weights(set(c.entities) for c in chunks),
+            audience_classified=any(c.audience for c in chunks),
         )
         self.manifest_path.parent.mkdir(parents=True, exist_ok=True)
         self.manifest_path.write_text(
@@ -320,6 +329,7 @@ class VectorStore:
         university: str | None = None,
         policy_type: PolicyType | str | None = None,
         query_embedding: list[float] | None = None,
+        audience: set[str] | None = None,
     ) -> list[RetrievedChunk]:
         """Find the chunks most relevant to `question`.
 
@@ -342,6 +352,11 @@ class VectorStore:
                 policy_type.value if isinstance(policy_type, PolicyType) else policy_type
             )
             clauses.append({"policy_type": value})
+        if audience:
+            # Keep chunks for ANY of the question's audiences. Unclassified
+            # chunks have every aud_* flag set, so they always pass.
+            flags = [{f"aud_{label}": True} for label in sorted(audience)]
+            clauses.append(flags[0] if len(flags) == 1 else {"$or": flags})
 
         where = None
         if len(clauses) == 1:

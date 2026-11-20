@@ -51,6 +51,10 @@ retrieval:
   entity_boost: true
   entity_boost_weight: 0.1
   entity_boost_cap: 0.05
+  # Audience filter: each section is labelled at index time with who it is
+  # for (student, parent_visitor, staff), each question by a word list, and
+  # retrieval keeps only chunks for the question's audience.
+  audience_filter: true
 
 llm:
   backend: ollama

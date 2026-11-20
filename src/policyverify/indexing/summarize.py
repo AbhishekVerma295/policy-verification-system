@@ -220,15 +220,17 @@ class SectionSummarizer:
     ) -> str:
         cfg = self.config
         name = section_name or section.heading
-        if self.llm is None or self._llm_failed:
-            self.stats["fallback"] += 1
-            return extractive_summary(section.text, cfg.summary_max_chars)
-
+        # The cache comes first, even without a model: an offline build then
+        # still uses every summary an earlier build already paid for.
         key = SummaryCache.key(self.model_name, name, section.text)
         cached = self.cache.get(key)
         if cached is not None:
             self.stats["cached"] += 1
             return cached
+
+        if self.llm is None or self._llm_failed:
+            self.stats["fallback"] += 1
+            return extractive_summary(section.text, cfg.summary_max_chars)
 
         try:
             summary = self._summarise_with_llm(section, university, policy, name)
