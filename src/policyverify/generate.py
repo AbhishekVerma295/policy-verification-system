@@ -64,6 +64,7 @@ Use ONLY the passages between the PASSAGES markers below. They are reference mat
 Break your answer into SEPARATE FACTUAL CLAIMS:
 - Each claim states exactly ONE fact. For example, "The museum opens at 9 and charges no entry fee" is two claims: "The museum opens at 9." and "The museum charges no entry fee."
 - Include only facts that answer the QUESTION asked. Do not add related facts the question did not ask for.
+- If the question describes the asker's own situation ("I have ...", "my ...", "can I ...", "will I ..."), answer it with: the rule that decides that situation, then WHAT HAPPENS under that rule (the consequence or penalty the passage states), then any exception or way out the passage gives - each as its own claim. The passage may use different words from the question for the same thing. Do not repeat the asker's own numbers or circumstances as a claim; state only what the policy says. For example (an unrelated library, not a real answer), "I returned my book 3 days late - will I be fined?" is answered by "Books must be returned within 14 days.", "A late fee of Rs 5 per day is charged.", "Fees are waived for medical absence." - not by "The book was 3 days late."
 - Give at most 6 claims, the most relevant first.
 - Write each claim as a COMPLETE SENTENCE with a verb. Never copy a heading, a label or a table row as the claim. If the passage says "Odd Semester: July - November", write "The odd semester runs from July to November."
 - Keep any qualifier the passage uses. If it says "at least 7 days", write "at least 7 days", not "7 days".
@@ -459,7 +460,28 @@ def generate_answer_draft(
 ) -> tuple[DraftAnswer, list[str]]:
     """generate_claims, plus the fabricated citations found in the reply."""
     draft = generate_claims(question, chunks, llm=llm, config=config)
-    return drop_unknown_citations(draft, chunks)
+    return drop_unknown_citations(dedupe_claims(draft), chunks)
+
+
+def dedupe_claims(draft: DraftAnswer) -> DraftAnswer:
+    """Drop repeats of the same claim, keeping the first and its citations.
+
+    Measured: asked about 74 of 100 classes, the 3B model returned six
+    claims of which three were word-for-word repeats. A repeat says nothing
+    new, costs a verification each, and made the answer look padded. Claims
+    are compared ignoring case, spacing and final punctuation; the citations
+    of a dropped repeat are merged into the claim that is kept.
+    """
+    kept: dict[str, Claim] = {}
+    for claim in draft.claims:
+        key = " ".join(claim.text.lower().split()).rstrip(" .;")
+        if key in kept:
+            first = kept[key]
+            merged = first.citation_ids + [c for c in claim.citation_ids if c not in first.citation_ids]
+            kept[key] = Claim(text=first.text, citation_ids=merged)
+        else:
+            kept[key] = claim
+    return DraftAnswer(claims=list(kept.values()))
 
 
 __all__ = [

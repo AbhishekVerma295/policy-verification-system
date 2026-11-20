@@ -479,3 +479,24 @@ def test_a_label_copied_in_front_of_the_id_is_removed():
         assert resolve_citation(written, known) == "srm/scholarship/3-mat_score"
     # Still strict: a label in front of an invented ID resolves to nothing.
     assert resolve_citation("citation_id: srm/scholarship/9-invented", known) is None
+
+
+def test_repeated_claims_are_dropped_and_their_citations_merged():
+    from policyverify.generate import dedupe_claims
+
+    draft = DraftAnswer.model_validate({"claims": [
+        {"text": "Attendance must be at least 75%.", "citation_ids": ["a/b/1"]},
+        {"text": "attendance must be  at least 75%", "citation_ids": ["a/b/1", "a/b/2"]},
+        {"text": "Condonation cannot exceed 10%.", "citation_ids": ["a/b/3"]},
+    ]})
+    out = dedupe_claims(draft)
+    assert [c.text for c in out.claims] == [
+        "Attendance must be at least 75%.", "Condonation cannot exceed 10%."]
+    assert out.claims[0].citation_ids == ["a/b/1", "a/b/2"]
+
+
+def test_the_prompt_asks_for_the_consequence_in_situation_questions():
+    """The 74-of-100 question was answered with the bare rule and declined."""
+    prompt = build_prompt("q", [_retrieved()])
+    assert "WHAT HAPPENS under that rule" in prompt
+    assert "Do not repeat the asker's own numbers" in prompt

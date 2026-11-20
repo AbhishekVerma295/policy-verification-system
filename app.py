@@ -311,6 +311,16 @@ def draw_answer_summary(answer: Answer, store: VectorStore) -> None:
     ]
     with st.container(border=True):
         st.markdown("##### :material/verified: Answer")
+        situation = getattr(answer, "situation", None)
+        if situation:
+            # Worked out in code from the asker's figure and the verified
+            # rule below - see situation.py - so it is labelled as such.
+            st.info(
+                f"**Applied to your situation:** {situation}  \n"
+                "_Calculated from the figure in your question and the verified rule "
+                f"below (`{answer.situation_citation}`)._",
+                icon=":material/calculate:",
+            )
         st.markdown("\n".join(lines), unsafe_allow_html=True)
         st.caption("Sources")
         for n, citation in enumerate(sources, start=1):
