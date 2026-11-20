@@ -231,7 +231,7 @@ class Document(BaseModel):
     ever sees this shape, and does not care where the document came from.
     """
 
-    doc_id: str  # "{university}/{policy_type}"
+    doc_id: str  # "{university}/{key}" - key is the policy type unless the manifest names one
     university: str  # slug, e.g. "uni_a"
     university_name: str  # display name, e.g. "University A"
     policy_type: PolicyType
@@ -248,6 +248,13 @@ class Document(BaseModel):
         if not _SLUG_RE.match(v):
             raise ValueError(f"university {v!r} must be a slug like 'uni_a'")
         return v
+
+    @property
+    def key(self) -> str:
+        """The document's name inside its university: the policy type, or the
+        manifest's `key` when two documents share a type. Cited as
+        "{university}/{key}/{section}"."""
+        return self.doc_id.split("/", 1)[1] if "/" in self.doc_id else self.policy_type.value
 
     def citations(self) -> list[CitationID]:
         """A unique CitationID for every section, aligned with self.sections.
@@ -279,7 +286,7 @@ class Document(BaseModel):
             out.append(
                 CitationID(
                     university=self.university,
-                    policy=self.policy_type.value,
+                    policy=self.key,
                     section=unique_key,
                 )
             )
@@ -471,6 +478,9 @@ class CheckResults(BaseModel):
     # True when support came from an exact quote of the passage rather than
     # from the NLI model.
     exact_quote: bool = False
+    # True when support came from the table-row check (verify/table.py): one
+    # table row holds the claim's numbers and words, and no other row does.
+    table_row: bool = False
 
     # The relevance gate (verify/relevance.py): does a supported claim answer
     # the question that was ASKED? Verification only proves a claim is true of

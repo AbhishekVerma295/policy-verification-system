@@ -1,0 +1,139 @@
+{
+  "meta": {
+    "run_id": "verifier-20261120-123403",
+    "split": "tuning",
+    "kind": null,
+    "wall_seconds": 50.5,
+    "config": {
+      "llm_model": "qwen3:4b",
+      "llm_backend": "ollama",
+      "llm_temperature": "0.0",
+      "embedding_model": "BAAI/bge-base-en-v1.5",
+      "nli_model": "MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli",
+      "top_k": "6",
+      "min_claim_score": "0.5",
+      "table_row_check": "True"
+    },
+    "entailment_threshold": 0.5
+  },
+  "summary": {
+    "items": 44,
+    "supported_items": 24,
+    "unsupported_items": 20,
+    "confusion": {
+      "tp": 24,
+      "fp": 0,
+      "fn": 0,
+      "tn": 20
+    },
+    "precision": 1.0,
+    "precision_ci": [
+      0.862,
+      1.0
+    ],
+    "recall": 1.0,
+    "recall_ci": [
+      0.862,
+      1.0
+    ],
+    "f1": 1.0,
+    "false_accept_rate": 0.0,
+    "false_accept_ci": [
+      0.0,
+      0.1611
+    ],
+    "false_reject_rate": 0.0,
+    "false_reject_ci": [
+      0.0,
+      0.138
+    ],
+    "contradiction_detection": {
+      "items": 14,
+      "refuted": 14,
+      "rate": 1.0
+    },
+    "by_kind": {
+      "paraphrase": {
+        "items": 16,
+        "correct": 16,
+        "accuracy": 1.0,
+        "verdicts": {
+          "SUPPORTED": 16,
+          "REFUTED": 0,
+          "NEUTRAL": 0
+        }
+      },
+      "verbatim": {
+        "items": 8,
+        "correct": 8,
+        "accuracy": 1.0,
+        "verdicts": {
+          "SUPPORTED": 8,
+          "REFUTED": 0,
+          "NEUTRAL": 0
+        }
+      },
+      "number": {
+        "items": 4,
+        "correct": 4,
+        "accuracy": 1.0,
+        "verdicts": {
+          "SUPPORTED": 0,
+          "REFUTED": 4,
+          "NEUTRAL": 0
+        }
+      },
+      "role": {
+        "items": 3,
+        "correct": 3,
+        "accuracy": 1.0,
+        "verdicts": {
+          "SUPPORTED": 0,
+          "REFUTED": 3,
+          "NEUTRAL": 0
+        }
+      },
+      "negation": {
+        "items": 4,
+        "correct": 4,
+        "accuracy": 1.0,
+        "verdicts": {
+          "SUPPORTED": 0,
+          "REFUTED": 4,
+          "NEUTRAL": 0
+        }
+      },
+      "entity": {
+        "items": 3,
+        "correct": 3,
+        "accuracy": 1.0,
+        "verdicts": {
+          "SUPPORTED": 0,
+          "REFUTED": 3,
+          "NEUTRAL": 0
+        }
+      },
+      "unsupported": {
+        "items": 3,
+        "correct": 3,
+        "accuracy": 1.0,
+        "verdicts": {
+          "SUPPORTED": 0,
+          "REFUTED": 0,
+          "NEUTRAL": 3
+        }
+      },
+      "wrong_section": {
+        "items": 3,
+        "correct": 3,
+        "accuracy": 1.0,
+        "verdicts": {
+          "SUPPORTED": 0,
+          "REFUTED": 1,
+          "NEUTRAL": 2
+        }
+      }
+    },
+    "wrong": []
+  }
+}

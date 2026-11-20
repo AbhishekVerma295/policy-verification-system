@@ -108,6 +108,28 @@ universities:
         retrieved_at: "2026-08-14"
         checksum: ""
 
+      # ADDED 2026-11-20. The scholarship page above links to this PDF
+      # ("Scholarship Categories" button). It is a NEWER, amended summary
+      # (titled "2025-26 Onwards (Amended)", edited Feb 2026; the page says
+      # "2023 Onwards") and adds facts the page does not have: which fees
+      # each scholarship covers (application, registration, tuition,
+      # hostel/transport, exam), the Arts & Culture achievement rates and
+      # the Alumni ward and Defence percentages. It is added ALONGSIDE the
+      # page, not instead of it - the page still holds the conditions,
+      # renewal rules and the per-faculty score tables.
+      # Known conflict: the page says Founder's Scholarship for "Top 20,000
+      # ranks in IIT JEE (Mains)"; this PDF says "Rank up to 2000". Both
+      # stay; each is cited by its own source and date.
+      # `key` gives it its own name, so its citations read
+      # srm/scholarship_categories/... and never clash with the page's.
+      - type: scholarship
+        key: scholarship_categories
+        title: "SRMIST Scholarship Categories 2025-26 Onwards (Amended)"
+        url: "https://webstor.srmist.edu.in/web_assets/downloads/2026/srmist-scholarship-categories.pdf"
+        format: pdf
+        retrieved_at: "2026-11-20"
+        checksum: ""
+
       - type: residence
         title: "SRMIST Hostels Rules and Regulations (updated Jan 2025)"
         url: "https://webstor.srmist.edu.in/web_assets/downloads/2024/srm-hostel-rules-2025.pdf"

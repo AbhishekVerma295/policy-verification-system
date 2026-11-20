@@ -53,11 +53,27 @@ from policyverify.schema import Document, PolicyType, Section, SourceFormat
 # "4", "4.2", "4.2.1", "A.1" at the start of a line, followed by a space and
 # more text on the same line - the numbering convention used throughout
 # SRM's regulation and rules PDFs.
-_NUMBERED_RE = re.compile(r"^(\d+(?:\.\d+)*|[A-Z]\.\d+)[.):]?\s+(\S.*)$")
+#
+# Also "8.Employee ward scholarship (EWS)": SRM's scholarship page drops the
+# space after the dot for five of its headings (5, 6, 8, 9 and a CUET
+# heading), and each of those sections used to be swallowed by the one
+# before it - the Employee Ward and Alumni scholarships were cited as part
+# of "7. SRM Arts and Culture Scholarship". Without a space, the text must
+# start with a capital letter, so "8.5 marks" or "2.3.1" never match.
+_NUMBERED_RE = re.compile(r"^(\d+(?:\.\d+)*|[A-Z]\.\d+)(?:[.):]?\s+|\.(?=[A-Z][a-z]))(\S.*)$")
+
+# A regulation number at the start of a line in SRM's Academic Regulations:
+# "R 2.2 Category of Courses", "R7.1 Attendance Definition: It is ...",
+# "R 1.3  SRM Joint Engineering Entrance Examination - UG (SRMJEEE - UG):
+# SRMJEEE (UG) is a ...". The "R" marks a regulation heading beyond doubt,
+# but 12 of them were missed: some have no colon, some a long title, some
+# are mostly lower case ("Course Registration for a semester"). See
+# split_regulation_headings().
+_REGULATION_RE = re.compile(r"^\s*R\s?(\d+(?:\.\d+)+)\s*(\S.*)$")
 
 # A short, mostly-uppercase line - the convention SRM's HTML policy pages use
 # for section headers within a single block of body text (see extract.py).
-_CAPS_RE = re.compile(r"^[A-Z][A-Z0-9 /&,\-()]{3,90}:?$")
+_CAPS_RE = re.compile(r"^[A-Z][A-Z0-9 /&,\-–()]{3,90}:?$")
 
 # A numbered, Title Case heading ending in a colon, appearing anywhere in a
 # line rather than at the start of one:
@@ -82,6 +98,9 @@ _CAPS_RE = re.compile(r"^[A-Z][A-Z0-9 /&,\-()]{3,90}:?$")
 _INLINE_HEADING_RE = re.compile(r"(?:^|\s)(\d+(?:\.\d+)+)\s+([A-Z][A-Za-z][^:\n]{2,58}):")
 
 _MAX_HEADING_LEN = 100
+# The longest title accepted in the no-space form "8.Employee ward
+# scholarship (EWS)" without the Title Case check.
+_MAX_TIGHT_HEADING = 60
 
 # A Roman numeral from I to XXXIX, then "." or ")" and (optionally) the
 # heading text. Only I, V and X are accepted: C, D, L and M are Roman too,
@@ -101,6 +120,102 @@ _MAX_ROMAN_CAPS_LEN = 180
 # Percentile", "95 Percentage and Above". A real numbered heading names a
 # topic; it does not start with a range word or a unit.
 _BAND_WORDS = {"to", "and", "or", "percentile", "percentage", "th", "st", "nd", "rd", "-", "–"}
+
+
+def split_regulation_headings(text: str) -> str:
+    """Rewrite each "R n.n Title: body" line as "n.n Title:" plus the body.
+
+    The colon-terminated form is what _is_numbered_heading() accepts with a
+    relaxed Title Case check (see there), so every regulation heading is
+    found however it is capitalised. Lines that are too long to hold a
+    title before any colon are left alone. Only line breaks and the "R"
+    marker change; the regulation text itself is untouched.
+    """
+    out = []
+    for line in text.splitlines():
+        m = None if TABLE_CELL_SEPARATOR in line else _REGULATION_RE.match(line)
+        if not m:
+            out.append(line)
+            continue
+        number, rest = m.group(1), m.group(2).strip()
+        title, colon, body = rest.partition(":")
+        title = title.strip()
+        if not title or len(title) > _MAX_HEADING_LEN or not title[0].isupper():
+            out.append(line)
+            continue
+        out.append(f"{number} {title}:")
+        if colon and body.strip():
+            out.append(body.strip())
+    return "\n".join(out)
+
+
+def join_lone_section_numbers(text: str) -> str:
+    """Join "16.0" alone on its line to the title on the next line.
+
+    The hostel rules print "16.0" and "GENERAL (Discipline)" as separate
+    lines. Other sections there have ALL CAPS titles ("RAGGING") that are
+    found as headings anyway, but this one is not all capitals, so all of
+    General (Discipline) was folded into Ragging - one 8,948-character
+    section. Joined only when the next line is a short title that is not
+    already a heading by itself (so the citations of the sections that were
+    already found do not change).
+    """
+    lines = text.splitlines()
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        nxt = lines[i + 1].strip() if i + 1 < len(lines) else ""
+        if (
+            re.fullmatch(r"\d{1,2}\.0", line)
+            and nxt
+            and len(nxt) <= 60
+            and nxt[0].isupper()
+            and nxt[-1] not in ".,;"
+            and not _is_caps_heading(nxt)
+            and _is_titlecase_majority(nxt)
+        ):
+            out.append(f"{line} {nxt}")
+            i += 2
+            continue
+        out.append(lines[i])
+        i += 1
+    return "\n".join(out)
+
+
+def join_wrapped_caps_headings(text: str) -> str:
+    """Join an ALL CAPS numbered heading to its ALL CAPS second line.
+
+    The code of conduct's "3. SRMIST STUDENT CONDUCT EXPECTATIONS AS AN
+    INDIVIDUAL" wraps onto "OR AS A GROUP:". Read as two headings, the first
+    had no text under it and was dropped, and the section was cited as
+    "or_as_a_group".
+    """
+    lines = text.splitlines()
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        nxt = lines[i + 1].strip() if i + 1 < len(lines) else ""
+        numbered = _is_numbered_heading(line)
+        if (
+            numbered
+            and not line.endswith(":")
+            and _all_caps(numbered[1])
+            and nxt
+            and _is_caps_heading(nxt)
+        ):
+            out.append(f"{line} {nxt}")
+            i += 2
+            continue
+        out.append(lines[i])
+        i += 1
+    return "\n".join(out)
+
+
+def _all_caps(text: str) -> bool:
+    letters = [c for c in text if c.isalpha()]
+    return len(letters) >= 4 and all(c.isupper() for c in letters)
 
 
 def promote_inline_headings(text: str) -> str:
@@ -163,7 +278,16 @@ def _is_numbered_heading(line: str) -> tuple[str, str] | None:
     # sentences that happen to start with a digit, not headings - reject them.
     if len(rest) > _MAX_HEADING_LEN or rest.endswith("."):
         return None
-    if not _is_titlecase_majority(rest):
+    # A dotted number and a title ending in a colon ("2.3 Structure of
+    # credits and courses:") is a heading even when most of its words are
+    # lower case; it only has to start with a capital. This is the shape
+    # split_regulation_headings() writes.
+    colon_heading = "." in number and rest.endswith(":") and rest[0].isupper()
+    # "8.Employee ward scholarship (EWS)": the no-space form is a heading
+    # style, not how a sentence in a list is written, so a short title is
+    # enough there.
+    tight_heading = bool(re.match(r"\d{1,2}\.[A-Z]", line)) and len(rest) <= _MAX_TIGHT_HEADING
+    if not (colon_heading or tight_heading) and not _is_titlecase_majority(rest):
         return None
     # "95 Percentile and above" is a table cell, not heading 95.
     if rest.split()[0].lower() in _BAND_WORDS:
@@ -247,6 +371,9 @@ def split_into_sections(text: str, title: str) -> list[Section]:
     """Split cleaned document text into sections at detected heading lines."""
     # Rescue headings that PDF extraction buried mid-line before looking for
     # them - see promote_inline_headings().
+    text = split_regulation_headings(text)
+    text = join_lone_section_numbers(text)
+    text = join_wrapped_caps_headings(text)
     lines = join_lone_roman_numerals(promote_inline_headings(text)).splitlines()
 
     # (line index, section number if numbered, heading text)
@@ -293,12 +420,18 @@ def build_document(
     retrieved_at: date,
     raw_bytes: bytes,
     text: str,
+    key: str | None = None,
 ) -> Document:
-    """Assemble a validated Document from already-extracted plain text."""
+    """Assemble a validated Document from already-extracted plain text.
+
+    `key` names the document when it is not simply its policy type (see
+    fetch.document_key); it becomes the middle part of the document ID and
+    of every citation.
+    """
     checksum = hashlib.sha256(raw_bytes).hexdigest()
     sections = split_into_sections(text, title)
     return Document(
-        doc_id=f"{university}/{policy_type.value}",
+        doc_id=f"{university}/{key or policy_type.value}",
         university=university,
         university_name=university_name,
         policy_type=policy_type,

@@ -1,0 +1,125 @@
+{
+  "meta": {
+    "run_id": "run-20261120-122700",
+    "split": "tuning",
+    "category": null,
+    "sample": null,
+    "wall_seconds": 181.4,
+    "config": {
+      "llm_model": "qwen3:4b",
+      "llm_backend": "ollama",
+      "llm_temperature": "0.0",
+      "embedding_model": "BAAI/bge-base-en-v1.5",
+      "nli_model": "MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli",
+      "top_k": "6",
+      "min_claim_score": "0.5",
+      "table_row_check": "True"
+    }
+  },
+  "summary": {
+    "items": 33,
+    "scored": 33,
+    "errors": 0,
+    "accuracy": 0.7576,
+    "accuracy_ci": [
+      0.5898,
+      0.8717
+    ],
+    "hallucination_ci": [
+      0.0054,
+      0.1532
+    ],
+    "answered": {
+      "items": 23,
+      "wrong": 4,
+      "wrong_rate": 0.1739,
+      "wrong_ci": [
+        0.0698,
+        0.3714
+      ]
+    },
+    "abstention": {
+      "unanswerable_items": 7,
+      "correct_abstention_rate": 0.8571,
+      "answerable_items": 26,
+      "false_abstention_rate": 0.1538
+    },
+    "citation_accuracy": 0.8636,
+    "hallucination_rate": 0.0303,
+    "claims": {
+      "generated": 69,
+      "kept": 45,
+      "removed": 24,
+      "removal_rate": 0.3478,
+      "citation_precision": 0.7674,
+      "citation_recall": 0.4912
+    },
+    "latency": {
+      "retrieve": {
+        "mean_ms": 456.6,
+        "median_ms": 37.6,
+        "p95_ms": 51.8
+      },
+      "generate": {
+        "mean_ms": 3096.1,
+        "median_ms": 2279.0,
+        "p95_ms": 5622.7
+      },
+      "verify": {
+        "mean_ms": 1942.1,
+        "median_ms": 1647.0,
+        "p95_ms": 3857.4
+      },
+      "total": {
+        "mean_ms": 5494.7,
+        "median_ms": 4471.9,
+        "p95_ms": 9457.3
+      }
+    },
+    "outcomes": {
+      "correct": 19,
+      "wrong_citation": 3,
+      "false_abstention": 4,
+      "correct_abstention": 6,
+      "answered_unanswerable": 1
+    },
+    "by_category": {
+      "cross_policy": {
+        "items": 5,
+        "passed": 4,
+        "accuracy": 0.8
+      },
+      "false_premise": {
+        "items": 6,
+        "passed": 1,
+        "accuracy": 0.1667
+      },
+      "negation_exception": {
+        "items": 6,
+        "passed": 6,
+        "accuracy": 1.0
+      },
+      "numeric": {
+        "items": 9,
+        "passed": 8,
+        "accuracy": 0.8889
+      },
+      "unanswerable": {
+        "items": 7,
+        "passed": 6,
+        "accuracy": 0.8571
+      }
+    },
+    "baseline_without_verification": {
+      "accuracy": 0.6061,
+      "hallucination_rate": 0.2727,
+      "citation_accuracy": 0.8077,
+      "abstention": {
+        "unanswerable_items": 7,
+        "correct_abstention_rate": 0.1429,
+        "answerable_items": 26,
+        "false_abstention_rate": 0.0
+      }
+    }
+  }
+}

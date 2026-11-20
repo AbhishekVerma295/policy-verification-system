@@ -175,7 +175,7 @@ class LLMConfig(BaseModel):
     """
 
     backend: str = "ollama"
-    model: str = "qwen3:4b"
+    model: str = "qwen3.5:9b"  # backup: qwen3:4b (see config.yaml)
     temperature: float = 0.0
     # Hard ceiling so one bad question cannot hang the whole app. Generous,
     # because on a machine with no GPU a normal answer takes over a minute.
@@ -260,6 +260,14 @@ class VerificationConfig(BaseModel):
     # If a claim cites a section that does not exist, that is a fabricated
     # citation - always a failure, never a judgement call.
     fail_on_missing_citation: bool = True
+    # The table-row check (verify/table.py, added 2026-11-20): support a claim
+    # the NLI model missed when exactly one table row holds all its numbers
+    # (or ranges containing them), most of its words, and no word of another
+    # row. It never refutes. `table_row_score` is the confidence recorded for
+    # such support; it must clear abstention.min_claim_score.
+    table_row_check: bool = True
+    table_row_min_coverage: float = 0.6
+    table_row_score: float = 0.9
 
 
 class AbstentionConfig(BaseModel):
@@ -368,6 +376,7 @@ class Config(BaseModel):
             "nli_model": self.nli.model_name,
             "top_k": str(self.retrieval.top_k),
             "min_claim_score": str(self.abstention.min_claim_score),
+            "table_row_check": str(self.verification.table_row_check),
         }
 
 

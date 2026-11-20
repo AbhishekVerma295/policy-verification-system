@@ -35,6 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from policyverify.config import get_config  # noqa: E402
 from policyverify.ingest import build_document, extract, fetch_all, load_manifest  # noqa: E402
+from policyverify.ingest.fetch import document_key  # noqa: E402
 from policyverify.schema import PolicyType, SourceFormat  # noqa: E402
 
 
@@ -47,9 +48,10 @@ def check_raw_files(manifest: dict, raw_dir: Path) -> list[str]:
     problems = []
     for uni in manifest.get("universities", []):
         for policy in uni.get("policies", []):
-            doc_id = f"{uni['university']}/{policy['type']}"
+            key = document_key(policy)
+            doc_id = f"{uni['university']}/{key}"
             ext = "pdf" if policy["format"] == "pdf" else "html"
-            path = raw_dir / uni["university"] / f"{policy['type']}.{ext}"
+            path = raw_dir / uni["university"] / f"{key}.{ext}"
             if not path.exists():
                 problems.append(f"{doc_id}: {path} is missing")
                 continue
@@ -96,8 +98,9 @@ def main() -> int:
     documents = []
     for uni in manifest.get("universities", []):
         for policy in uni.get("policies", []):
+            key = document_key(policy)
             ext = "pdf" if policy["format"] == "pdf" else "html"
-            raw_path = raw_dir / uni["university"] / f"{policy['type']}.{ext}"
+            raw_path = raw_dir / uni["university"] / f"{key}.{ext}"
             raw_bytes = raw_path.read_bytes()
             text = extract(raw_bytes, policy["format"])
 
@@ -111,15 +114,16 @@ def main() -> int:
                 retrieved_at=date.fromisoformat(policy["retrieved_at"]),
                 raw_bytes=raw_bytes,
                 text=text,
+                key=key,
             )
             documents.append(doc)
 
             out_dir = processed_dir / uni["university"]
             out_dir.mkdir(parents=True, exist_ok=True)
-            (out_dir / f"{policy['type']}.json").write_text(
+            (out_dir / f"{key}.json").write_text(
                 doc.model_dump_json(indent=2), encoding="utf-8"
             )
-            (out_dir / f"{policy['type']}.txt").write_text(text, encoding="utf-8")
+            (out_dir / f"{key}.txt").write_text(text, encoding="utf-8")
 
             print(f"  {doc.doc_id:<30} {len(doc.sections):>3} sections  ({len(text):,} chars)")
 

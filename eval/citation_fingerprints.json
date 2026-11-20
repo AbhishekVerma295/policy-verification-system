@@ -22,15 +22,15 @@
     ]
   },
   "srm/attendance/1.5-admissions_under_lateral_entry_scheme": {
-    "chars": 1129,
-    "sha256": "fdfe607e303cea2805d4d131b92021b1e42bf788662293b808aeffdd57fa01a8",
+    "chars": 1147,
+    "sha256": "276abe07e1be64b62c2df718a9059b21593d0cb8b96ef3e50f30a1fe76bac821",
     "used_by": [
       "num-014"
     ]
   },
   "srm/attendance/3.5-summer_semester": {
-    "chars": 3093,
-    "sha256": "752aa06a5a10012c48db968f58489c559c7e9931048f46229d907a3697779b63",
+    "chars": 1239,
+    "sha256": "081df09ea133f33eed10faebe0b044743a7beefee813d1ad3990c724ec5bb345",
     "used_by": [
       "fp-003",
       "neg-004",
@@ -39,37 +39,37 @@
     ]
   },
   "srm/attendance/4.6-learning_assessment_weightage": {
-    "chars": 4125,
-    "sha256": "5a717dfd21e0810a08112f1988bbb5b41f0f4cb18e031baa59d5ea6adda48f87",
+    "chars": 5502,
+    "sha256": "8c23421db5acc116522ceeefcc1c793713da32ca1e6833a039f5ebb0899722d2",
     "used_by": [
       "num-015"
     ]
   },
   "srm/attendance/5.1-semester_duration": {
-    "chars": 2470,
-    "sha256": "77ea2ee6ca3dc98f044016dbef4aa98765d494633e2e9b108495029a9f5ab2f3",
+    "chars": 857,
+    "sha256": "b0734327d4c58b7d326ef5a5c86b7d8524c4de4d97ccbb61403461600bf292e4",
     "used_by": [
       "num-013"
     ]
   },
   "srm/attendance/6.4-appeal": {
-    "chars": 584,
-    "sha256": "da553cf9fe0bc423490d5189804355d873e69b80b9f3461a51128457ec429631",
+    "chars": 97,
+    "sha256": "f10ded113f223d6f07341b848c7d2a7861b8823a95ee69890be83b4f96f97744",
     "used_by": [
       "fp-006"
     ]
   },
   "srm/attendance/7.2-attendance_percentage_code": {
-    "chars": 351,
-    "sha256": "889fbdfab0b3133f1630fe4de4b7e290b6cadd9edd42fdbba3e768691cb27326",
+    "chars": 454,
+    "sha256": "03c4d9dd8a7e7d57cb0b1a51cac26743e0d942b13d09d92be2acb52025b77aef",
     "used_by": [
       "num-011",
       "xpol-009"
     ]
   },
   "srm/attendance/7.3-minimum_attendance": {
-    "chars": 1260,
-    "sha256": "19894203e37a0ca0bdfcfa74fc4e50c39b48a7a839e67f5fe323c50a103defd5",
+    "chars": 1258,
+    "sha256": "10cb83564d11bd5cabea3366bfcb68e7587a5e7539e2b97d26c091fce26258cc",
     "used_by": [
       "fp-001",
       "fp-002",
@@ -82,16 +82,16 @@
     ]
   },
   "srm/attendance/7.4-attendance_shortage_and_examination": {
-    "chars": 514,
-    "sha256": "4f390f935fec91a026de82332d0a0fbd6ca855a58f728feee3e35bf90cc05877",
+    "chars": 512,
+    "sha256": "f31f4cb72b7858c2c76ab942d7a0edc676c10b1c146cf13119314ab6ef55662f",
     "used_by": [
       "fp-002",
       "num-012"
     ]
   },
   "srm/attendance/7.5-condonation_of_attendance": {
-    "chars": 573,
-    "sha256": "c14caefc60f94640baa9b45af17876381f3fd01f8ed3ed90703854ffdbc61b7c",
+    "chars": 533,
+    "sha256": "bc74f1acd65a69e69533d9816e6378852ceb7c6475f31e2a6747c1abd637427c",
     "used_by": [
       "fp-005",
       "num-002",
@@ -99,17 +99,17 @@
     ]
   },
   "srm/attendance/8.2-method_of_awarding_letter_grades": {
-    "chars": 623,
-    "sha256": "c815c87cd2eea091be20e416ce6240ca473d1e5f543725723d258fb1d24493eb",
+    "chars": 621,
+    "sha256": "3b629e2c19407483185c3fc069cc39e2e7f58c5d69ab06ed69055a2748c61cd3",
     "used_by": [
       "num-004",
       "xpol-002",
       "xpol-008"
     ]
   },
-  "srm/code_of_conduct/consequence": {
-    "chars": 1035,
-    "sha256": "5225ae681ff2eee775964e2a3eff1a8371a8e86a73735e17137a70b459dc3259",
+  "srm/code_of_conduct/3-srmist_student_conduct_expectations_as_a": {
+    "chars": 6579,
+    "sha256": "4cf81de2818cedca77ea5a3cc20c7d478ab801d168bbc27f7bd5ba6c1b2ae445",
     "used_by": [
       "un-014"
     ]
@@ -121,9 +121,9 @@
       "fp-009"
     ]
   },
-  "srm/code_of_conduct/or_as_a_group": {
-    "chars": 6579,
-    "sha256": "4cf81de2818cedca77ea5a3cc20c7d478ab801d168bbc27f7bd5ba6c1b2ae445",
+  "srm/code_of_conduct/level_1": {
+    "chars": 2077,
+    "sha256": "c8bdeeda1ea4ea51ce8a4ca081fd3b0b9bd60d4805206ede9ba5154203458575",
     "used_by": [
       "un-014"
     ]
@@ -158,8 +158,8 @@
     ]
   },
   "srm/residence/entry_exit_to_from_hostels": {
-    "chars": 380,
-    "sha256": "b65cdc082527298b50604de764b1437d516e0a9e712cb01c62d8b18fbeedb809",
+    "chars": 383,
+    "sha256": "81925ec54f352d950cfb3122f6e16ae7f242e6b612e0108a7172334c87b2f068",
     "used_by": [
       "neg-011"
     ]
@@ -175,9 +175,9 @@
       "xpol-004"
     ]
   },
-  "srm/residence/ragging-2": {
-    "chars": 9748,
-    "sha256": "0f06dc7e3252957c4c5c47d5852ad9def326f0219094a32c8ed2678fd957c963",
+  "srm/residence/ragging": {
+    "chars": 1058,
+    "sha256": "c5e2039c364e9f8f3d64a6c9651bc32667c878ce3a96e89c5e5fb50ec98c6bc4",
     "used_by": [
       "fp-007"
     ]
@@ -189,14 +189,23 @@
       "neg-007"
     ]
   },
-  "srm/residence/visitors_to_the_hostels-2": {
-    "chars": 1042,
-    "sha256": "def6d583ae45884b99310b2f0a37b6920f09b7027e41fcabd1bcc1e8ab6c0bab",
+  "srm/residence/visitors_to_the_hostels": {
+    "chars": 1063,
+    "sha256": "32d57d0c06e37f7407f276d77617d4955838359deda2a741357b690f9ba75c2f",
     "used_by": [
       "fp-004",
       "neg-001",
       "neg-002",
       "neg-006"
+    ]
+  },
+  "srm/scholarship/1-based_on_cuet_common_university_entrance": {
+    "chars": 945,
+    "sha256": "daa5c36dd003d52ad196a4ddf5ba1a7ef742887f5470a9b31f7fc889c9208e37",
+    "used_by": [
+      "num-016",
+      "xpol-001",
+      "xpol-005"
     ]
   },
   "srm/scholarship/1-based_on_cuet_pg_common_university_entra": {
@@ -234,8 +243,8 @@
     ]
   },
   "srm/scholarship/17-faculty_of_science_and_humanities": {
-    "chars": 1059,
-    "sha256": "0c460fc2ca67b32b18d2935732f9c3243b8f5c7bd38e5dc110592b2d7761f4a8",
+    "chars": 56,
+    "sha256": "9b67092cae16f38810462bff78792a4e406cd455429546c6f6b1efb67b640da9",
     "used_by": [
       "num-016",
       "xpol-001",
@@ -252,8 +261,8 @@
     ]
   },
   "srm/scholarship/2-diversity_scholarship": {
-    "chars": 3290,
-    "sha256": "5f8812625d24afbe77a1b28a8dbe2c73958adc8e1861ac78c4f5d4fff51883bc",
+    "chars": 3310,
+    "sha256": "3cb9d947bbed0cb323c14bd0a6f34591f0ce56d7fd0f1e4e2f3bb9713e77ea5e",
     "used_by": [
       "un-010"
     ]
@@ -285,8 +294,17 @@
     ]
   },
   "srm/scholarship/4-nmat_score": {
-    "chars": 2447,
-    "sha256": "5aa8163cd65b5b32b44221685bb45083b8cec7c8adb53366878f1469f3d2eb98",
+    "chars": 325,
+    "sha256": "0664fec5ad576431c2a475b511c5bf3f0793d66c1d104dca1d3af0f643301d23",
+    "used_by": [
+      "num-016",
+      "xpol-001",
+      "xpol-005"
+    ]
+  },
+  "srm/scholarship/5-diversity_scholarships": {
+    "chars": 2103,
+    "sha256": "e813a7e0956be9f0e5b28bbc034ef31402cf5a71e84f50b19592da5e81850b46",
     "used_by": [
       "num-016",
       "xpol-001",

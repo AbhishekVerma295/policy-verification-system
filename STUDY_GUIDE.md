@@ -6,10 +6,16 @@ is the interface and evaluation part in detail. Section 10 is the full
 history: what changed, when, and **why each decision was made**. Section 11
 is the final results.
 
-**Last updated: 16 November 2026** (code at commit `5cffae2`). The previous
-version of this guide was written on 13 November, before the audit and the
-improvement work of 14–16 November. Many of its numbers and limitations are
-no longer true; where something changed, this guide says what it used to be.
+**Last updated: 20 November 2026.** Sections 10.15–10.25 describe the work of
+19–20 November: the teammate's retrieval changes, the measurements that
+compared them, the data audit and the second ingestion repair. That work is
+**local and not committed**: the teammate is developing a different approach
+in parallel, and both versions will be measured before one is kept (see
+10.21). Section 11 is still the **final** result of 16 November; the
+development numbers of 20 November are in 11.1.
+
+The 16 November edition replaced a 13 November guide written before the audit.
+Where something changed, this guide says what it used to be.
 
 Every result number here is **measured**, and section 11 names the file it
 comes from.
@@ -136,7 +142,7 @@ So the system prefers the visible mistake.
 
 | Job | What we use | Why |
 |---|---|---|
-| Writes the answer, and the relevance yes/no | **Qwen 3, 4B** (`qwen3:4b`) via **Ollama**, temperature 0, "thinking" off | Small enough to run locally; no internet, no API cost, data stays private |
+| Writes the answer, and the relevance yes/no | **Qwen 3.5, 9B** (`qwen3.5:9b`) via **Ollama** since 20 Nov (before: `qwen3:4b`, now the backup), temperature 0, "thinking" off | Small enough to run locally; no internet, no API cost, data stays private |
 | Search | `BAAI/bge-base-en-v1.5` embeddings + **Chroma**, plus **BM25** keyword search | Good accuracy for its size, runs on CPU; BM25 catches exact terms embeddings miss |
 | Fact-checker | `MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli`, on CPU in float32 | Scored best in our early test, 100% on number cases |
 | Interface | **Streamlit** | A web page written in plain Python |
@@ -282,15 +288,16 @@ Claim-level verification with several independent checks; sentence- and table-ro
 
 | | |
 |---|---|
-| Documents | 6 |
-| Sections parsed / indexed | 212 / 192 |
-| Chunks in the index | 262 |
+| Documents | 7 (6 until 20 Nov; the Scholarship Categories PDF was added, 10.18) |
+| Sections parsed / indexed | 225 / 222 (212 / 192 on 16 Nov) |
+| Chunks in the index | 307 (262 on 16 Nov) |
+| Chunk size | at most 1800 characters, 150 overlap |
 | Passages retrieved per question | 6 (at most 2 from one section) |
 | Adversarial questions | 64 (33 tuning, 31 held-out) |
 | Final teammate questions | 40 |
 | Labelled claims | 85 |
 | Trap categories | 5 |
-| Automated tests | 472 |
+| Automated tests | 564 on 20 Nov (472 on 16 Nov) |
 | Confidence needed to keep a claim | 0.5 |
 | Conflict threshold | 0.9 |
 | Relevance gate | accept ≥ 0.85, reject < 0.55, otherwise ask the model |
@@ -584,25 +591,309 @@ anything was accepted. Larger tasks used a stronger model as the worker.
 Where two tasks were independent, they ran side by side. Commits were always
 made by hand by the student, never by the AI.
 
-### 10.16 Teammate's retrieval change (19 Nov, `aeea740`, merged in `b7f37ee`)
+### 10.15 Teammate's retrieval change (19 Nov, `aeea740`, merged in `b7f37ee`)
 
 A teammate changed retrieval and indexing after the final evaluation: entity
 extraction (`entities.py`), chunk summaries (`indexing/summarize.py`), and
 boosting in `retrieve.py`, plus changes to `generate.py`, `config.yaml` and
 the app. **The final results in section 11 were measured before this change**
 (code at `3782df6`), so they describe the system as it was on 16 Nov. The
-change has not been re-evaluated. If it is kept, run the tuning evaluation to
-see its effect; do not re-run the held-out sets to tune it.
+change was measured on 20 Nov on the tuning split only (10.17); the held-out
+sets were not re-run.
 
-### 10.15 Still not done (and whether it is worth it)
+### 10.16 Teammate's audience filter (20 Nov, `3434b4e`, merged in `3b11491`)
+
+The teammate's second change:
+
+- the language model labels each section with its readers (student, parent/visitor, staff), in `indexing/classify.py`;
+- a question is labelled by a word list, and search keeps only passages for the question's readers;
+- if fewer than 6 passages survive, the rest are filled from the unfiltered search;
+- the summary cache is now checked before the model is called.
+
+**Why it changed little:** of 454 passages, 426 were labelled student, 30 staff
+and only **2** parent/visitor, so almost every question still searched almost
+everything.
+
+**Search indexes are per machine.** `data/index` and `data/processed` are not
+in git. Each PC builds its own, and the summaries and audience labels are
+written by whichever model that PC runs (the teammate's laptop likely uses
+`qwen2.5:3b`, set with `POLICYVERIFY_LLM_MODEL`). Two PCs on the same code
+can therefore have different indexes.
+
+### 10.17 Which version is better? Measuring the teammate's changes (20 Nov)
+
+All numbers measured on the **tuning split** and the **fresh 49-question
+check set** (questions the system was never tuned on, but not a held-out
+set). Held-out sets were not used.
+
+| | 16 Nov system | + 19 Nov change (`aeea740`) | + audience filter (`3434b4e`) |
+|---|---|---|---|
+| Tuning accuracy | 78.8% | 66.7% (2 runs) | 69.7% (2 runs) |
+| Tuning hallucination | 3.0% | 6.1% | 9.1% / 6.1% |
+| Unanswerable declined | 6 of 7 | 6 of 7 | 5 of 7 |
+| Answerable wrongly declined | 2 of 26 | 5 of 26 | 4–5 of 26 |
+| Fresh accuracy | 85.7–89.8% | 81.6% | 79.6% |
+| Fresh hallucination | 2.0% | 2.0% | 4.1% |
+
+The pass-mark question (R 8.2, "50% of the total marks") broke again: R 8.2
+dropped out of the top 6 passages, and the model answered with the 75%
+attendance rule.
+
+**Finding the cause: switching one part off at a time (tuning, one run each):**
+
+| Setup | Accuracy | Halluc. | Unans. declined | Wrongly declined |
+|---|---|---|---|---|
+| Everything on (teammate's version) | 69.7% | 6.1–9.1% | 5 of 7 | 4–5 of 26 |
+| Audience filter off | 63.6% | 9.1% | 5 of 7 | 6 of 26 |
+| + entity boost off | 69.7% | 3.0% | 6 of 7 | 6 of 26 |
+| + summaries out of the prompt | 75.8% | 3.0% | 6 of 7 | 4 of 26 |
+| 800-character chunks, **no summaries**, all off | 78.8% | 6.1% | 5 of 7 | 2 of 26 |
+| 1800-character chunks, **no summaries**, all off | **81.8%** | **3.0%** | 6 of 7 | 3 of 26 |
+| 1800-character chunks + summaries | 72.7% | 3.0% | 6 of 7 | 4 of 26 |
+
+On the fresh set, both "no summaries" setups scored 81.6%.
+
+**Conclusions:**
+
+- **Section summaries were the main cause.** Every passage of a section carried the same summary, so to the search all passages of a section looked alike and the exact rule was pushed out. Removing them recovered 6–12 points.
+- The **entity boost** was slightly harmful; the **audience filter** had no measurable effect.
+- **Chunk size** (800 vs 1800) made no clear difference: one question either way, which is within run-to-run noise.
+- The teammate's other changes (decline message, citation tolerance, prompt example) did no harm.
+
+**Decision:** keep the code, switch these parts off in `config.yaml`, and go
+back to 1800-character chunks, because every reported result was measured
+with them. Rejected alternative: deleting the teammate's code, which would
+make the comparison impossible to repeat.
+
+### 10.18 Data audit and second ingestion repair (20 Nov, not committed)
+
+**Why:** testing by hand, scholarship questions were answered wrongly, and the
+hostel–warden table could not be used at all. A full audit of the stored text
+(`data/processed`) against the original documents found:
+
+| Problem | Where | Effect |
+|---|---|---|
+| **The PDF header/footer filter deleted table data.** It removed any short line seen 3+ times anywhere in a PDF; in a table a cell is often its own line, and cells repeat. | Regulations PDF: 628 lines deleted, including every grade point, attendance codes 9 and 8, "First Class"/"Second Class", the CGPA bands and every "%". Hostel PDF: 74 lines. | The system could not answer "grade points for A+" or "attendance code at 90%". **One held-out label (`num-011`) had been written from the damaged text.** |
+| **PDF tables read one cell per line** | Hostel PDF (warden emails and phone numbers), regulations (grade, code, class tables) | Rows fell apart, and some emails were split in half |
+| **Web tables with merged cells left flat** | Scholarship 10 of 34 tables (EWS, Alumni, Arts), code of conduct 6 of 7, examination 3 of 6 | EWS percentages and service years in separate lists; consequences mixed in with misconducts; six sections all called "Consequence" |
+| **Missed headings** | "8.Employee…" / "9.Alumni…" (no space after the dot); 12 regulations (e.g. "R 3.1 Course Registration for a semester": lower case, no colon); "16.0" alone on a line above "GENERAL (Discipline)"; a two-line code-of-conduct heading | Text cited under the wrong section, e.g. EWS and Alumni under "7. Arts and Culture"; all of General (Discipline) inside "Ragging" (8,948 characters) |
+| **A linked document never read** | The scholarship page's "Scholarship Categories" PDF | Missing facts: which fees each scholarship covers, Alumni ward 25%, Defence up to 25%, Arts & Culture state/national/international rates |
+| **PDF read out of order** | Regulations page with R 6.2 and R 7.2 | The attendance-code table landed inside R 6.2 |
+
+**Fixes** (`ingest/extract.py`, `ingest/normalize.py`):
+
+1. **PDF tables** are found with PyMuPDF's table finder and written one row per line, like the web tables: "Attendance rounded to: 85 to 94% | Code: 9." A table continued on the next page keeps its header, and an email cut by a page break is rejoined.
+2. **Merged cells:**
+   - In web tables, the page's own `rowspan`/`colspan` say exactly which rows a merged cell covers, so the cell is copied into each of them. No guessing is involved.
+   - In PDFs, the merged cell is found by position: the real cell whose box covers that spot. Copying from the row above was tried first and gave the wrong answer for a cell merged *sideways* ("SRM Merit Scholarship" got the Founder's sub-category letter).
+3. **Header/footer filter** now only considers lines at the **top or bottom** of a page, on 3 or more pages. A bare number is removed only as the first or last line of a page (a page number). Table rows are never removed.
+4. **Text is read top to bottom** (`sort=True`), which put the attendance-code table back in R 7.2.
+5. **Headings:**
+   - "8.Employee ward scholarship (EWS)" is accepted;
+   - "R n.n Title" lines are split out however they are capitalised;
+   - "16.0" is joined to the title below it, but only when that title is not already a heading on its own, so no other citation changed;
+   - the wrapped two-line heading is joined.
+6. **Table titles:** "LEVEL – 1" over a code-of-conduct table becomes a section heading (so citations read `code_of_conduct/level_2`), and a numbered category column in the new PDF starts a section per scholarship (`scholarship_categories/VIII-employee_ward_scholarship`).
+7. **Blank templates** (assessment tables whose cells are only "%" or "-") are written once as their column names, which keeps the weightages such as "CLA-1 (45%)".
+8. **Contents pages** are recognised (a "Page No" column, also when continued on the next page) and dropped.
+
+**The new document** (`data/manifest.yaml`, `fetch.py`, `schema.py`):
+
+- The Scholarship Categories PDF was added **alongside** the web page, not instead of it, because the page still holds the conditions and the score tables.
+- A manifest entry can now set a `key`. The new document is `srm/scholarship_categories`, so its file, its document ID and its citations never clash with `srm/scholarship`. Its policy type is still `scholarship`.
+- **Known conflict, kept and recorded in the manifest:** the page (2023 onwards) says Founder's Scholarship for "Top 20,000 ranks in IIT JEE (Mains)"; the PDF (2025-26, amended) says "Rank up to 2000". Each is cited with its own source and date. No test question uses this fact.
+- **Decision:** add it alongside the page rather than replace the page's facts, as chosen by the student.
+
+**Result:** 7 documents, 225 sections, 307 chunks. 17 new tests, each modelled
+on one real failure.
+
+**Honesty note:** the review of the unused 50-question set (10.13) had noticed
+two gaps in the indexed text ("a garbled table, an unindexed list") and they
+were deliberately left alone then. The repair here was started by the
+student's own testing and fixes whole classes of problem, not those
+questions. It was not checked against the 50-question set, which is still
+unrun.
+
+### 10.19 Labels updated and the new setup measured (20 Nov, not committed)
+
+**Labels.** Section IDs changed, for example `residence/visitors_to_the_hostels-2`
+became `visitors_to_the_hostels` because the contents page no longer makes
+duplicates. 29 items were remapped, each checked by hand against the new text
+and given a dated note:
+
+- 10 adversarial;
+- 5 in the final 40;
+- 14 claims.
+
+**`num-011` was corrected:** the attendance code for 90% is **9**. The answer
+words were not changed in any other item. The citation fingerprints were
+re-recorded (38).
+
+**Settings in `config.yaml`**, each with a dated comment: 1800/150 chunks;
+summaries, summaries in the prompt, entity boost and audience filter all off.
+
+**Measured (development numbers, not final):**
+
+| | 16 Nov | Teammate's version | **20 Nov repaired** |
+|---|---|---|---|
+| Tuning accuracy | 78.8% | 69.7% | **75.8%** (2 identical runs) |
+| Tuning hallucination | 3.0% | 6.1–9.1% | **3.0%** |
+| Unanswerable declined | 6 of 7 | 5 of 7 | 6 of 7 |
+| Wrongly declined | 2 of 26 | 4–5 of 26 | 4 of 26 |
+| Fresh accuracy | 85.7–89.8% | 79.6% | **83.7%** |
+| Fresh hallucination | 2.0% | 4.1% | **2.0%** |
+| Checker on tuning claims (precision / recall / false-accept) | — | 96% / 100% / 5% | **100% / 100% / 0%** |
+
+The 3-point gap to 16 Nov on tuning is one question. The three questions that
+changed are all false-premise or relevance-gate cases (10.25), not data
+errors.
+
+**Spot check of the repaired areas** (12 questions, not scored): 7 answered
+correctly, including the warden email for Paari, the ESQ-A phone number,
+grade points for A+, EWS 100% for 20 years' teaching service, the ID-card
+consequence and the sibling rule. 4 correct answers were **declined by the
+checker** and 1 wrong answer was rightly stopped. The checker cannot see that
+90% lies in "85 to 94%", reads a neighbouring row as a contradiction, and
+does not read "Tuition Fee: 25%" rows as statements. That is step E (10.20).
+
+### 10.20 Step E: table-aware checking (20 Nov, not committed)
+
+**Problem:** the NLI model misreads table rows (10.19, spot check):
+
+- it cannot see that 90% lies in "85 to 94%";
+- it reads the neighbouring row "95% and above | Code: H" as a contradiction;
+- it scores "Header: value" rows such as "Tuition Fee: 25%" near zero.
+
+The numeric guard also vetoed "90%", because that number is not written in
+the row.
+
+**Fix:** `verify/table.py`, a check without a model. When the model does not
+support a claim, or the numeric guard vetoes it, it looks for the **one**
+table row in the cited passages that the claim describes. A row matches only
+when all of these hold:
+
+1. every number in the claim is in the row, exactly or inside a range the row states, and at least one is written exactly (the answer, not just the value asked about);
+2. at least 60% of the claim's words are in the row;
+3. no claim word belongs only to another row ("code H" fails for the 85–94% row);
+4. every name the claim capitalises is in the row;
+5. each exact number sits in a cell whose own column or value words the claim uses; inside "State-25% National-50% International-75%", only next to the claim's label.
+
+**Exactly one row may match.** It can grant support but never refutes, and
+it is skipped when a cited *prose* passage contradicts the claim at the
+conflict threshold (0.9), so a rule in words always beats a table. It can be
+switched off with `verification.table_row_check`.
+
+**How the rules were found:** each was added because the first version
+supported a wrong claim written to test it:
+
+- rule 1's "exactly" because "renewal needs CGPA 9" was "in" "CGPA > 8";
+- rule 4 because "the Defence scholarship gives 25%" matched the Alumni row;
+- rule 5 because "IIT JEE covers 100% of exam fees" matched a row whose 100% is under Tuition, and "75% for national level" matched the cell holding International-75%.
+
+29 tests keep these cases.
+
+**Rejected alternatives:**
+
+- Rewriting rows as sentences for the NLI model. The model still cannot do ranges, and a neighbouring row would still "contradict".
+- Letting the check refute claims. A missed match is not proof of a wrong claim.
+
+**Measured (tuning decides; the rest are checks):**
+
+| | Before step E | After step E |
+|---|---|---|
+| Tuning accuracy / hallucination | 75.8% / 3.0% | 75.8% / 3.0% (2 identical runs) |
+| Checker on tuning claims (P / R / false-accept) | 100 / 100 / 0% | 100 / 100 / 0%; all 3 "right number, wrong row" claims still refuted |
+| Fresh 49 accuracy / hallucination | 83.7% / 2.0% | **85.7%** / 2.0% (the SAT 1450 → 75% look-up is now answered) |
+| Spot check of repaired areas (12) | 7 correct | **10 correct** |
+
+On tuning the check fired once per run, on `num-016` ("the maximum merit
+waiver is 100%"), which was already correct. The tuning set has few table
+look-ups, so it can show the check does no harm but not how much it helps.
+
+**Decision:** keep it on. It made no difference on tuning, added no false
+accept on the claim benchmark, and fixed table look-ups elsewhere.
+
+The two spot-check questions still declined:
+
+- **First Class with Distinction for M.Tech:** the M.Tech and B.Tech tables hold the same row, so the claim does not single one out, and by design that is not supported.
+- **Arts & Culture national rate:** the model's answer (25–100%) was wrong and rightly not supported.
+
+### 10.21 Two approaches in parallel (from 20 Nov)
+
+The teammate is developing a different approach on the same project. **Both
+versions will be measured on the same tuning split and the same model, and
+the better one kept.** Until then this work stays local: nothing is committed
+or pushed.
+
+### 10.22 The final test set (20 Nov, not yet run)
+
+**What was needed:**
+
+- written by someone who did not build either version, with its own answer key;
+- about 80–100 questions, frozen before anyone runs it, and run once on each version;
+- answers checked against the original documents;
+- every document covered;
+- plenty of near-miss unanswerable and false-premise questions.
+
+**What was done:**
+
+1. A new 40-question set (`srmist_policy_qna_*`) was reviewed: every fact in its key was checked against the policy text and found correct.
+2. Corrected copies were made: `eval_docs/SRMIST_Policy_QnA_*_v2.md`. Changes: Q15, Q20, Q21 and Q31 sources; Q21, Q22 and Q33 marked ambiguous or interpretive with an accepted answer; Q37 relabelled a near miss; and two scoring rules fixed in advance (calculation answers earn full marks for the verified pieces; blind grading).
+3. The 50-question v2 set was corrected to v3: Q24 is now answerable (the new PDF gives Defence "up to 25%"), and the Q46 answer was updated.
+4. Both were converted into one scoring file, `eval/final_test.jsonl`: `fa-01`..`fa-40` and `fb-01`..`fb-50`; 79 answerable, 11 unanswerable. The [Domain | Type] tags are left out of the question text, every citation was checked to exist, and every required value to appear in its cited section.
+
+5. The teammate then wrote 14 extra near-miss and false-premise questions. All their quotes are correct, but 5 repeated facts already tested, so 9 were added (`fc-41`..`fc-54`). The file now has **99 questions: 83 answerable, 16 unanswerable, 14 false premise**. Replacements for the 5 have been asked for.
+
+**Not done, on purpose:** I did not write new questions. The person who
+builds the system should not write the test. The review asked for 8–10 more
+near-miss unanswerable and 4–6 more false-premise questions, from the
+teammate.
+
+**Gap found while converting, NOT repaired:** text before a document's
+first detected heading is never stored. For the plagiarism policy this loses
+the preamble, the definition and type 1, "Secondary sources", which `fb-29`
+asks about. Fixing it after reading the test would bias the test (the same
+rule as in 10.13), so `fb-29` is kept as a measure of the gap. Repairing it is
+a separate decision, to be disclosed if made.
+
+**Fairness decision still open:** the teammate's version has neither the
+Scholarship Categories PDF nor the table repair; `fa-07`, `fa-18`, `fa-30`,
+`fa-31`, `fa-34` and `fb-24` need the PDF. Agree first whether whole systems
+are compared (fair as is) or only approaches (then give both versions the
+same documents).
+
+### 10.24 Default model changed to qwen3.5:9b (20 Nov)
+
+**Measured on the tuning split (2 identical runs):**
+
+| | qwen3:4b | qwen3.5:9b |
+|---|---|---|
+| Accuracy | 75.8% | 72.7% |
+| Hallucination | 3.0% | **0.0%** |
+| Unanswerable declined | 6 of 7 | **7 of 7** |
+| Answerable wrongly declined | 4 of 26 | 9 of 26 |
+| Median time per question | ~4.5 s | ~7.2 s |
+
+On the fresh 49, the 9B scored 83.7% (the 4B 85.7%), with 9 of 9 unanswerable declined.
+
+**Why the 9B declines more:**
+
+- It gives **no answer at all** to false-premise questions instead of correcting them.
+- Its relevance yes/no judgement is stricter.
+
+**Decision (the student's):** make the 9B the default, because zero hallucination and full declining of unanswerable questions are this project's main goals. `qwen3:4b` stays as the backup (`POLICYVERIFY_LLM_MODEL=qwen3:4b`). All results before 20 Nov used the 4B.
+
+**Follow-up:** fix the false-premise handling, then re-measure both models on tuning. The final test must use the same model for both versions.
+
+### 10.25 Still not done (and whether it is worth it)
 
 | Task | Worth it? |
 |---|---|
-| Screenshots of the app for the report | Yes — planned for when the report is written |
-| Component ablation table (each part switched off in turn) | Yes, for the research paper |
-| Run the 50-question set | Yes, for the paper; best as a before/after around the next item |
-| Fix table look-ups and false-premise declines | Optional; the only item that could break something that works |
-| Repair the missing indexed text | Only after the 50-question set is used |
+| Table-aware checking (step E) | **Done** (10.20) |
+| Relevance gate on false-premise questions | Yes — the next biggest cause (`fp-001`, `fp-003`, `fp-007`, `fp-011`) |
+| Compare with the teammate's new approach | Yes, before anything is committed |
+| Run `eval/final_test.jsonl` once on each version (10.22) | Yes, at the end. The 16 Nov held-out results stay "version 1" |
+| Screenshots of the app for the report | Yes, when the report is written |
 | Compare with MiniCheck | Only if a reviewer asks |
 
 ---
@@ -659,6 +950,27 @@ Result files: `eval/results/run-20261116-104137` (new 40),
 `run-20261116-104643` (original 31; corrected scores in
 `run-20261116-104643.relabelled.summary.json`), and
 `verifier-20261116-105128` (claims). Full detail: `RESEARCH_PAPER_DATA.md`.
+
+### 11.1 Development numbers after the 20 Nov repair (not final)
+
+These are **not** final results: tuning split and the fresh check set only,
+local uncommitted code (10.18–10.19). The held-out sets above were not
+re-run, and they stay the "version 1" result. The final test of the repaired
+system will be the unused 50-question set, run once.
+
+With the table-row check (10.20):
+
+| | Tuning (33) | Fresh check (49) |
+|---|---|---|
+| Accuracy | 75.8% (2 identical runs) | 85.7% |
+| Hallucination | 3.0% | 2.0% |
+| Unanswerable declined | 6 of 7 | 8 of 9 |
+| Answerable wrongly declined | 4 of 26 | 3 of 40 |
+| Checker on tuning claims | precision 100%, recall 100%, false-accept 0% | — |
+
+Result files: `eval/results/run-20261120-122700`, `run-20261120-123004`,
+`verifier-20261120-123403`. Before the table check: `run-20261120-115610`,
+`run-20261120-115926`.
 
 ---
 

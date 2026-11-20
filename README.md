@@ -165,8 +165,35 @@ pip install torch --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
 
 # 4. the language model
-ollama pull qwen3:4b
+ollama pull qwen3.5:9b        # the default in config.yaml (6.6 GB, best with ~8 GB GPU memory)
+ollama pull qwen3:4b          # backup: smaller and faster (2.5 GB)
 ```
+
+Run the app or a question with the default model:
+
+```bash
+streamlit run app.py
+python scripts/ask.py "What is the minimum attendance requirement?"
+```
+
+**Backup model.** On a machine with less GPU memory, or if the default is too
+slow, use `qwen3:4b` for the current terminal window (`config.yaml` stays
+unchanged):
+
+```bash
+# Windows Command Prompt
+set POLICYVERIFY_LLM_MODEL=qwen3:4b
+streamlit run app.py
+
+# PowerShell
+$env:POLICYVERIFY_LLM_MODEL = "qwen3:4b"
+streamlit run app.py
+```
+
+Close the window (or `set POLICYVERIFY_LLM_MODEL=` in cmd) to go back to the
+default. Measured on 20 Nov 2026 (tuning split): `qwen3.5:9b` 72.7% accuracy,
+0% hallucination, 7/7 unanswerable declined, 9/26 answerable declined;
+`qwen3:4b` 75.8%, 3.0%, 6/7, 4/26, and about 1.5x faster (`STUDY_GUIDE.md` 10.24).
 
 Verify the install:
 
@@ -357,9 +384,13 @@ adding an occurrence suffix where needed.
 ## The corpus
 
 **One institution - [SRM Institute of Science and Technology, Kattankulathur](https://www.srmist.edu.in/)
-- 6 documents**, one per policy type: attendance, examinations, academic
-integrity, scholarships, residence, and conduct. On 2026-11-16 that was 212
-parsed sections, of which 192 are indexed, in 262 chunks.
+- 7 documents**: one per policy type (attendance, examinations, academic
+integrity, scholarships, residence, and conduct), plus, since 2026-11-20,
+the Scholarship Categories PDF (2025-26, amended) beside the scholarship page,
+cited as `srm/scholarship_categories/...`. On 2026-11-20 that was 225 parsed
+sections, of which 222 are indexed, in 307 chunks (212 / 192 / 262 on
+2026-11-16). Tables in both PDFs and web pages are stored one row per line,
+merged cells included.
 
 Every source was run through `spikes/spike_corpus.py` before adoption and
 scored well on extraction quality. At this size, **curating by hand beats
@@ -470,7 +501,7 @@ short:
   that check rests on only 44 tuning claims (`scripts/calibrate.py`).
 - Prompt-injection protection (screening passages, delimiters, the schema) is
   partial.
-- It is one institution, one small model (`qwen3:4b`), and small evaluation
+- It is one institution, one small model (`qwen3.5:9b` since 20 Nov 2026; all earlier results used `qwen3:4b`), and small evaluation
   sets, so results carry wide error bars.
 
 ---
