@@ -6,13 +6,13 @@ is the interface and evaluation part in detail. Section 10 is the full
 history: what changed, when, and **why each decision was made**. Section 11
 is the final results.
 
-**Last updated: 20 November 2026.** Sections 10.15–10.25 describe the work of
+**Last updated: 20 November 2026.** Sections 10.15–10.26 describe the work of
 19–20 November: the teammate's retrieval changes, the measurements that
 compared them, the data audit and the second ingestion repair. That work is
 **local and not committed**: the teammate is developing a different approach
 in parallel, and both versions will be measured before one is kept (see
-10.21). Section 11 is still the **final** result of 16 November; the
-development numbers of 20 November are in 11.1.
+10.21). Section 11 holds the version 1 final results (16 November), the development numbers (11.1),
+and the **version 2 final results of 20 November (11.2)**.
 
 The 16 November edition replaced a 13 November guide written before the audit.
 Where something changed, this guide says what it used to be.
@@ -38,6 +38,10 @@ citation attached, is worse than no answer — so we verify before we answer.*
 system stood behind a wrong answer **0 times** (without verification it would
 have been 8 times, 20%), at the cost of declining about 1 in 5 answerable
 questions.
+
+**Version 2 (20 Nov, the final system, `qwen3.5:9b`):** on 99 independent questions it declined
+15 of 16 unanswerable questions and, read by hand, never showed a false fact as verified, but it
+declined 25 of 83 answerable ones. Accuracy was 62.6%, against 79.8% with verification off (11.2).
 
 ---
 
@@ -885,12 +889,51 @@ On the fresh 49, the 9B scored 83.7% (the 4B 85.7%), with 9 of 9 unanswerable de
 
 **Follow-up:** fix the false-premise handling, then re-measure both models on tuning. The final test must use the same model for both versions.
 
-### 10.25 Still not done (and whether it is worth it)
+### 10.25 False-premise questions: the answer prompt (20 Nov)
+
+**Cause found:** the answer prompt said "if the passages do not contain the
+specific thing the question asks for, return an empty claims list". For "Why is
+ragging punished with only a warning?" the passages never give that reason,
+because the premise is false, so the model correctly returned nothing. The
+relevance check already accepts corrections (its prompt says so); the answer
+prompt never let the model write one.
+
+**Fix** (`generate.py`): one new rule. If the question assumes something the
+passages say is not so, give claims stating what the passages actually say
+about that same thing. The example is about a museum, as before, so the model
+cannot copy it as a policy answer.
+
+**Why a prompt change can be judged now:** on 16 Nov prompt changes were
+rejected because generation varied between runs. Today every pair of tuning
+runs gave identical results, so a change can be measured.
+
+**Measured (tuning, two runs each; development numbers):**
+
+| | Before | **Kept version** | Refined version (rejected) |
+|---|---|---|---|
+| qwen3.5:9b accuracy / hallucination | 72.7% / 0% | **75.8% / 0%** | 72.7% / 3.0% |
+| 9B unanswerable declined / answerable wrongly declined | 7 of 7 / 9 of 26 | **7 of 7 / 6 of 26** | 7 of 7 / 7 of 26 |
+| qwen3:4b accuracy / hallucination | 75.8% / 3.0% | 75.8–78.8% / 3.0% | not run |
+
+**Fresh 49 (check only):**
+
+- 9B: 83.7% / 2.0% before, **85.7% / 0.0%** after; 9 of 9 unanswerable declined.
+- 4B: 87.8% after, but hallucination rose to 4.1%. It newly answered "What minimum CGPA is required for campus placements?" with an invented "7", so the 4B, now only the backup, is more eager with this rule.
+
+**The rejected refinement:** the rule was limited to "a different value for exactly the thing named", and claims were told never to repeat the question's wrong figure. It fixed no false-premise question and cost one point on the 9B, so it was dropped.
+
+**Still not fixed** (9B, tuning):
+
+- fp-001, fp-003, fp-009 and fp-011: the model still returns nothing.
+- fp-005: the correction "10%, not 25%" repeats the wrong figure, and the numeric guard vetoes it.
+- fp-007: the true "ragging entails heavy fines, suspension, expulsion" was REFUTED by the checker (0.98). That is a verifier problem to look at separately.
+
+### 10.26 Still not done (and whether it is worth it)
 
 | Task | Worth it? |
 |---|---|
 | Table-aware checking (step E) | **Done** (10.20) |
-| Relevance gate on false-premise questions | Yes — the next biggest cause (`fp-001`, `fp-003`, `fp-007`, `fp-011`) |
+| False-premise questions | Partly done (10.25): 9B tuning from 72.7% to 75.8%, still 0% hallucination; 4 questions still declined, and fp-007's true claim is refuted by the checker |
 | Compare with the teammate's new approach | Yes, before anything is committed |
 | Run `eval/final_test.jsonl` once on each version (10.22) | Yes, at the end. The 16 Nov held-out results stay "version 1" |
 | Screenshots of the app for the report | Yes, when the report is written |
@@ -970,7 +1013,33 @@ With the table-row check (10.20):
 
 Result files: `eval/results/run-20261120-122700`, `run-20261120-123004`,
 `verifier-20261120-123403`. Before the table check: `run-20261120-115610`,
-`run-20261120-115926`.
+`run-20261120-115926`. Final configuration (9B + false-premise rule): tuning 75.8%, 0.0%
+hallucination, 7 of 7 unanswerable, 6 of 26 wrongly declined (`run-20261120-154642`, `-155137`).
+
+### 11.2 FINAL results, version 2 (20 Nov, `qwen3.5:9b`, 99 questions, run once)
+
+`eval/results/run-20261120-165959`. The test set is `eval/final_test.jsonl` (10.22). The full write-up
+is in `PROJECT_REPORT.md`, and the paper data is in `RESEARCH_PAPER_DATA.md` section 0.
+
+| | With verification | Verification off |
+|---|---|---|
+| Accuracy | **62.6%** [53–72] | 79.8% |
+| Hallucination (automatic) | **3.0%** [1–9] | 9.1% |
+| Hallucination (read by hand) | **0 of 99** (95% CI 0–3.7%) | — |
+| Unanswerable declined | **15 of 16** | 12 of 16 |
+| Answerable wrongly declined | 25 of 83 (30.1%) | 3 of 83 |
+| Citation accuracy | 98.3% | 97.5% |
+| Median time per question | 11.4 s | — |
+
+**Things to be able to explain:**
+
+- **A 0% or 100% is an observation on a small sample, not perfection.** Say it with n and the interval: "0 false statements out of 99; the true rate is very likely below 3.7%". The checker's 100% recall is 24 of 24 claims (86–100%). Temperature 0 is a setting for repeatable runs, not a result.
+
+- **The three automatic "hallucinations" are not false statements.** fb-12 and fb-13 listed the whole table, every row true, including the right one; fb-23 gave the correct "not specified" answer without declining outright.
+- **Verification cost 17 points of accuracy this time.** The 9B model's raw answers are good (79.8%), and the checks threw away correct ones.
+- **Of the 25 wrong declines, 17 were true claims that the relevance check rejected** (all 34 removed true claims). The relevance check was tuned with the 4B and judges far more strictly with the 9B. It was **not** changed after the final run, because that would be tuning on the final test.
+- **By category:** unanswerable 15/16, yes/no with exception 13/17, cross-policy 12/18, false premise 8/14, numeric/table/calculation 14/34.
+- **Compared with version 1** (77.5% / 0% on the teammate's 40, with `qwen3:4b`): a different model and different, harder questions, so not directly comparable.
 
 ---
 

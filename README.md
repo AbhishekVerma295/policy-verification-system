@@ -191,9 +191,10 @@ streamlit run app.py
 ```
 
 Close the window (or `set POLICYVERIFY_LLM_MODEL=` in cmd) to go back to the
-default. Measured on 20 Nov 2026 (tuning split): `qwen3.5:9b` 72.7% accuracy,
-0% hallucination, 7/7 unanswerable declined, 9/26 answerable declined;
-`qwen3:4b` 75.8%, 3.0%, 6/7, 4/26, and about 1.5x faster (`STUDY_GUIDE.md` 10.24).
+default. Measured on 20 Nov 2026 (tuning split, with the false-premise rule):
+`qwen3.5:9b` 75.8% accuracy, 0% hallucination, 7/7 unanswerable declined,
+6/26 answerable declined; `qwen3:4b` 75.8-78.8%, 3.0%, 6/7, 3-4/26, and about
+1.5x faster (`STUDY_GUIDE.md` 10.24-10.25).
 
 Verify the install:
 
@@ -616,10 +617,17 @@ REFUTED rather than merely unverified. A summary is saved to
 
 ### Where the results are
 
-Current figures, with the dates and settings they were measured under, are in
-section 0.3 of [`PROJECT_STATUS.md`](PROJECT_STATUS.md) and in the
-`eval/results/*.summary.json` files. They are development numbers on the
-tuning half unless a file says otherwise.
+**Final results (version 2, 20 Nov 2026, `qwen3.5:9b`, 99 independent questions, run once):**
+
+- accuracy 62.6% [53–72] (79.8% with verification off);
+- no false statement shown as verified when read by hand (automatic hallucination count 3.0%, against 9.1% with verification off);
+- 15 of 16 unanswerable questions declined;
+- 25 of 83 answerable questions declined, mostly by the relevance check.
+
+The full write-up, with every decision and screenshots, is
+[`PROJECT_REPORT.md`](PROJECT_REPORT.md). The data for the paper is in
+[`RESEARCH_PAPER_DATA.md`](RESEARCH_PAPER_DATA.md). Development figures (tuning split) are in
+[`PROJECT_STATUS.md`](PROJECT_STATUS.md) section 0 and in `eval/results/*.summary.json`.
 
 > **Note on trap design.** Earlier drafts of this README described
 > "cross-regulation confusion" - the same question having a different answer
@@ -635,7 +643,7 @@ tuning half unless a file says otherwise.
 
 **Implemented**
 
-- Ingestion of six SRM policy documents, with table, heading and footer repair
+- Ingestion of seven SRM policy documents (six policies plus the Scholarship Categories PDF), with PDF and web tables read row by row, heading and footer repair
 - Hybrid retrieval (BM25 + embeddings, reciprocal rank fusion, per-section cap)
 - Schema-constrained claim generation, rescue of cut-off replies, screening of
   passages that talk to the AI, repair of clause-number citations

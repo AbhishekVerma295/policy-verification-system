@@ -70,6 +70,7 @@ Break your answer into SEPARATE FACTUAL CLAIMS:
 - Each claim must cite the citation_id of every passage supporting it, copied EXACTLY as written.
 - Do not add anything the passages do not say. Do not use outside knowledge.
 - A "section summary" line only says what a passage is about. Base every claim on the passage text itself, never on a summary.
+- If the question assumes something the passages say is NOT so (a wrong number, a rule that does not exist, "X is allowed, right?" when it is not), do NOT return an empty list: give the claims that state what the passages actually say about that same thing. For example, asked "Why does the museum charge Rs 500 for entry?" when the passage says entry is free, the claim is "The museum charges no entry fee."
 - If the passages do not contain the specific thing the question asks for, return an empty claims list. A passage on the same topic that does not give the specific thing asked is NOT an answer.
 
 Return JSON only, in exactly this shape:

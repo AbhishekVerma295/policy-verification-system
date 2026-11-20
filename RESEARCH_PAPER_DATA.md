@@ -1,8 +1,10 @@
 # Research paper data pack
 
 **Project:** Hallucination and Citation Verifier for Policy Question Answering
-**Prepared:** 16 November 2026, from code at commit `3782df6`
-**Purpose:** everything needed to write the experiments, dataset and results sections.
+**Prepared:** 16 November 2026 (version 1, sections 1–6); **updated 20 November 2026** with the
+final version 2 results (section 0).
+**Purpose:** everything needed to write the experiments, dataset and results sections. The project
+report with all decisions and screenshots is [`PROJECT_REPORT.md`](PROJECT_REPORT.md).
 
 **How to read the numbers.** Every number in this file is **measured** and comes
 from a saved result file named beside it, unless it is explicitly marked
@@ -10,28 +12,211 @@ otherwise. Ranges in square brackets are 95% Wilson confidence intervals. The
 test sets are small, so the intervals are wide; please quote them with the
 headline figures.
 
-> **Update, 20 November 2026: development work, not final results.** The
-> results below remain the final "version 1" results (16 Nov). Since then,
-> on local uncommitted code:
->
-> - a data audit found and fixed table data lost at ingestion (grade points, attendance codes, class bands, warden contacts) and missed headings;
-> - the Scholarship Categories PDF was added as a 7th document;
-> - the teammate's 19–20 Nov retrieval changes were measured and switched off (section summaries cost 6–12 points on the tuning split).
->
-> Development numbers (tuning 75.8%, 3.0% hallucination; fresh 49: 83.7%,
-> 2.0%) are in `STUDY_GUIDE.md` 11.1 and `PROJECT_STATUS.md` 0.0. The
-> repaired system will be tested once on the unused 50-question set.
->
-> **One held-out label changed:** `num-011` (Run B) now expects attendance
-> code "9". Its old label was written from text in which ingestion had
-> deleted the codes. Run B's numbers do **not** change, because the system
-> declined that question (`false_abstention` either way).
->
-> The Word copy of this file was not regenerated.
+**Two versions.** Version 1 (16 Nov: `qwen3:4b`, 6 documents) is in sections 1–6
+and stays valid as recorded. **Version 2 (20 Nov: `qwen3.5:9b`, 7 documents,
+repaired ingestion, table-row check, false-premise rule) is the final system**;
+its results are in section 0. The two used different test questions and different
+models, so do not subtract one from the other.
+
+> **Label change disclosed:** `num-011` (version 1, Run B) now expects attendance
+> code "9"; its old label was written from text in which ingestion had deleted the
+> codes. Run B's numbers do not change (the system declined that question either way).
+> The Word copy of this file (`RESEARCH_PAPER_DATA.docx`) describes version 1 only.
 
 ---
 
-## 1. Final experimental results
+## 0. Version 2 — final results (20 November 2026)
+
+### 0.1 Setup
+
+| | |
+|---|---|
+| Code | `main` at `23a7064` plus the false-premise prompt rule in `generate.py` (committed afterwards, unchanged) |
+| Answer model | `qwen3.5:9b` (Ollama, Q4_K_M), temperature 0, thinking off |
+| Checker / embeddings | DeBERTa-v3-base-mnli-fever-anli / bge-base-en-v1.5, both CPU |
+| Corpus | 7 documents, 225 sections (222 indexed), 307 chunks of at most 1800 characters |
+| Test | `eval/final_test.jsonl`, **99 questions**, run **once** (`run-20261120-165959`, 21.8 min) |
+| Hardware | Laptop, RTX 4060 8 GB, i7-13620H, 16 GB RAM |
+
+### 0.2 Headline results — `eval/results/run-20261120-165959.summary.json`
+
+| Metric | With verification | Verification off (same output, all claims kept) |
+|---|---|---|
+| Accuracy | **62.6%** [52.8–71.5] | 79.8% |
+| Hallucination rate (automatic) | **3.0%** [1.0–8.5] | 9.1% |
+| Hallucination, read by hand | **0 of 99** [0–3.7] | — |
+| Unanswerable correctly declined | **15 / 16 (93.8%)** | 12 / 16 (75.0%) |
+| Answerable wrongly declined | 25 / 83 (30.1%) | 3 / 83 (3.6%) |
+| Wrong when answering (any way) | 12 / 59 (20.3%) [12.0–32.3] | — |
+| Citation accuracy | 98.3% | 97.5% |
+| Claims generated / kept / removed | 271 / 138 / 133 (49.1% removed) | — |
+| Citation precision / recall (kept claims) | 89.7% / 52.5% | — |
+| Latency per question, median (p95) | 11.4 s (30.0 s): retrieve 0.07 s, generate 6.2 s, verify 4.0 s | — |
+
+**Outcome counts (the end-to-end confusion matrix):**
+
+| | Answered | Declined |
+|---|---|---|
+| Answerable (83) | 47 correct, 8 incomplete, 2 wrong value, 1 wrong citation | 25 false abstention |
+| Unanswerable (16) | 1 answered | 15 correct abstention |
+
+**The three automatic "hallucinations", read by hand:**
+
+- `fb-12`, `fb-13`: the system listed every row of the score table (all true, all verified), including the correct row. The scorer flags the other rows' values.
+- `fb-23`: the answer was "the policy does not specify a number of days; the receipt must be submitted while checking in", which is the correct near-miss answer. It is scored as "answered" because it did not decline.
+
+None states a false fact.
+
+> **How to read the perfect-looking scores.** A score of 0% or 100% on a small sample is not a
+> claim of perfection: it means no failure was *observed* among the items tested. Each such figure
+> is given with its sample size and a 95% Wilson confidence interval: the range of true rates
+> consistent with what was observed.
+>
+> | Figure | Calculated as | 95% interval |
+> |---|---|---|
+> | Hallucination, final test, read by hand | 0 false statements shown as verified ÷ 99 questions | 0–3.7% |
+> | Hallucination, final test, automatic scorer | 3 flagged ÷ 99 (all 3 traced to scoring artefacts by hand) | 1.0–8.5% |
+> | Hallucination, tuning, 9B | 0 ÷ 33 questions | 0–10.4% |
+> | Checker recall, tuning claims | 24 true claims accepted ÷ 24 true claims | 86–100% |
+> | Checker precision, tuning claims | 24 accepted claims true ÷ 24 accepted | 86–100% |
+> | Checker false-accept rate, tuning claims | 0 false claims accepted ÷ 20 false claims | 0–16% |
+> | Unanswerable declined, tuning | 7 ÷ 7 | 65–100% |
+>
+> Wilson interval for k successes in n trials: centre (k + z²/2)/(n + z²), half-width
+> z·√(k(n−k)/n + z²/4)/(n + z²), with z = 1.96. For k = 0 the upper limit is z²/(n + z²): with
+> n = 99 that is 3.84/102.84 = 3.7%.
+>
+> **Temperature 0 is a setting, not a result.** It makes the model always choose its most likely
+> next word, so a run can be repeated. It does not make answers correct. Our repeated tuning runs
+> gave identical results; on 16 Nov some runs still varied by about one question.
+
+### 0.3 By category and by source
+
+| Category (scorer) | Correct |
+|---|---|
+| Unanswerable | 15 / 16 (93.8%) |
+| Yes/no with exception | 13 / 17 (76.5%) |
+| Cross-policy / cross-document | 12 / 18 (66.7%) |
+| False premise | 8 / 14 (57.1%) |
+| Numeric, table, calculation | 14 / 34 (41.2%) |
+
+| Source set | Correct |
+|---|---|
+| `fa`: 40 hard reasoning questions (scenario, multi-hop, calculation, conflict, out-of-policy) | 20 / 40 (50.0%) |
+| `fb`: 50 short/casual questions, table look-ups, near misses | 34 / 50 (68.0%) |
+| `fc`: 9 near-miss and false-premise questions | 8 / 9 (88.9%) |
+
+Within `fa`, by the set's own question type:
+
+| Type | Correct |
+|---|---|
+| Direct lookup | 2/8 |
+| Scenario | 6/10 |
+| Multi-hop | 3/6 |
+| Calculation | 1/4 |
+| Boundary | 1/2 |
+| Conflicts | 3/4 |
+| Out of policy and near miss | 4/4 |
+| False premise | 0/2 |
+
+Most direct-lookup misses are multi-part questions scored "incomplete" by the automatic scorer.
+
+### 0.4 Why answerable questions were declined (25)
+
+| Cause | Questions |
+|---|---|
+| Verified-true claims rejected by the **relevance check** | **17** (all 34 removed true claims) |
+| Claims not verified (NLI or numeric guard) | 5 |
+| No claim produced by the model | 3 |
+
+The relevance check's yes/no prompt and thresholds were tuned with `qwen3:4b`; `qwen3.5:9b` answers it
+far more strictly. This is the main limitation of version 2. It was **not** changed after the final
+run, because changing it now would be tuning on the final test.
+
+### 0.5 The final test set (dataset)
+
+| Part | Items | Written by | Content |
+|---|---|---|---|
+| `fa-01`–`fa-40` | 40 | an independent set (questions + answer key) | direct lookup 8, scenario 10, multi-hop 6, calculation/boundary 6, conflict/version 4, out of policy/near miss 4, false premise 2 |
+| `fb-01`–`fb-50` | 50 | an independent 50-question set (v3) | numeric 10, table look-up 8, not covered 8, false premise 8, yes/no with exception 8, cross-policy 8 |
+| `fc-41`–`fc-54` | 9 | a teammate | near-miss unanswerable 5, false premise 4 (5 more rejected as repeats) |
+| **Total** | **99** | | 83 answerable, 16 unanswerable; 14 false premise |
+
+**Preparation, before any run:**
+
+- every expected fact was checked against the policy text;
+- answer-key corrections, each marked in `eval_docs/*_v2.md` / `*_v3.md`:
+  - `fa`: Q15, Q20, Q21 and Q31 sources; Q37 relabelled a near miss;
+  - `fb`: Q24 relabelled answerable (the new PDF gives Defence "up to 25%"); Q46 updated;
+- questions given to the system without their type tags;
+- section IDs and short checkable values added; full answers kept in notes for grading.
+
+**Scoring rules fixed in advance:**
+
+- calculation questions earn full marks for the verified pieces (the computed total is graded by hand);
+- `fa-21`, `fa-22` and `fa-33` are ambiguous or interpretive and have an accepted answer;
+- multi-part answers are to be graded blind with the 2/1/0 rubric.
+
+**Known gap, disclosed:** `fb-29` needs plagiarism type 1, which is not indexed (text before a document's first heading is dropped). It was found while converting the test, deliberately not repaired, and the system declined it.
+
+### 0.6 What changed from version 1 to version 2
+
+| Change | Effect measured on tuning (decisions only) |
+|---|---|
+| Ingestion repair: PDF tables row by row; the header filter no longer deletes table data (628 lines recovered in the regulations); merged-cell web tables; 20+ headings; top-to-bottom PDF reading | Checker on tuning claims: precision 96% → **100%** (24/24, CI 86–100), false accepts 5% → **0%** (0/20, CI 0–16) |
+| Scholarship Categories PDF added (7th document); one version conflict recorded | New facts answerable (fee coverage, Alumni 25%, Defence up to 25%) |
+| Teammate's retrieval add-ons (section summaries, entity boost, audience filter, 800-char chunks) measured and switched off | Summaries cost 6–12 points; tuning back from ~70% to 75.8–81.8% |
+| Table-row check (`verify/table.py`) | Tuning unchanged; fresh check set 83.7% → 85.7%; spot check 7 → 10 of 12 |
+| Default model `qwen3:4b` → `qwen3.5:9b` | Tuning 75.8% / 3.0% → 72.7% / 0.0% |
+| False-premise rule in the answer prompt | 9B tuning 72.7% → **75.8%**, hallucination 0.0%, wrongly declined 9 → 6 of 26 |
+
+**Development trajectory (tuning split, 33 questions):**
+
+| Stage | Accuracy | Hallucination |
+|---|---|---|
+| Audit, 14 Nov | 57.6% | 18.2% |
+| Version 1, 16 Nov | 78.8% | 3.0% |
+| Teammate's add-ons | 66.7–69.7% | 6.1–9.1% |
+| Repaired data + table check (4B) | 75.8% | 3.0% |
+| 9B | 72.7% | 0.0% |
+| **Final (9B + false-premise rule)** | **75.8%** | **0.0%** (0/33, 95% CI 0–10.4) |
+
+### 0.7 Error analysis (version 2)
+
+| Weakness | Evidence |
+|---|---|
+| Relevance check too strict with the 9B model | 17 of 25 wrong declines |
+| Table rows the NLI model cannot read | Report Fig. 7; table look-ups weakest category |
+| Corrections that repeat the question's wrong figure are vetoed by the numeric guard | Report Fig. 8 |
+| Version conflict not surfaced | Report Fig. 9; `fa-31` incomplete |
+| Over-long table answers (every row listed) | `fb-12`, `fb-13` |
+| Unindexed text before the first heading | `fb-29` |
+| Calculations outside a verify-only design | 1 / 4 `fa` calculation questions |
+
+### 0.8 Additional limitations for version 2
+
+- The prompts and the relevance thresholds were tuned with `qwen3:4b` and not re-tuned for `qwen3.5:9b`.
+- Versions 1 and 2 differ in model, corpus and test set; compare each version only with its own "verification off" baseline.
+- The builder converted the final test (section IDs, checkable values); the questions and answers were written by others.
+- Automatic scoring needs hand grading for multi-part, calculation and near-miss answers.
+
+### 0.9 Screenshots
+
+In `report/screenshots/`; captions are in `PROJECT_REPORT.md` section 7:
+
+1. start page;
+2. verified answer;
+3. table-row check;
+4. repaired PDF table;
+5. false premise corrected;
+6. unanswerable declined;
+7. limitation: over-caution;
+8. limitation: correction vetoed;
+9. limitation: conflict not flagged.
+
+---
+
+## 1. Version 1 — final experimental results (16 November 2026)
 
 ### 1.1 The three final runs
 

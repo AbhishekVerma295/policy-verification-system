@@ -82,6 +82,7 @@ DOCUMENTS = [
     "Examination Policy",
     "Plagiarism Policy",
     "Scholarship Policy",
+    "Scholarship Categories 2025-26 (Amended)",
     "Hostel Rules and Regulations (Jan 2025)",
     "Code of Conduct for Students",
 ]
@@ -279,7 +280,7 @@ def draw_declined(answer: Answer) -> None:
         icon=":material/block:",
     )
     st.info(
-        "The system answers **only** from these six documents. A question about "
+        f"The system answers **only** from these {len(DOCUMENTS)} documents. A question about "
         "anything else is declined instead of guessed:\n\n"
         + "\n".join(f"- {name}" for name in DOCUMENTS)
         + "\n\nThe passages it searched are under *Retrieved passages* at the bottom."

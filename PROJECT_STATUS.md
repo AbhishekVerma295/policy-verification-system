@@ -71,6 +71,25 @@ Kept.
 
 **6. Default model** changed to `qwen3.5:9b`; `qwen3:4b` is the backup. On tuning: 72.7% / 0% hallucination / 7 of 7 unanswerable declined / 9 of 26 answerable declined, vs 75.8% / 3.0% / 6 of 7 / 4 of 26 for the 4B (STUDY_GUIDE 10.24).
 
+**8. FINAL TEST, version 2** (99 questions, `qwen3.5:9b`, run once, `run-20261120-165959`):
+
+- accuracy **62.6%** [53–72] (79.8% with verification off);
+- hallucination 3.0% automatic, **0 of 99 read by hand** (9.1% with verification off);
+- unanswerable declined **15 of 16**;
+- answerable wrongly declined 25 of 83, 17 of them true claims rejected by the relevance check (tuned with the 4B);
+- citation accuracy 98.3%.
+
+Details are in `PROJECT_REPORT.md` and in `RESEARCH_PAPER_DATA.md` section 0.
+
+**7. False-premise rule in the answer prompt** (`generate.py`): if the question assumes something the passages say is not so, state what they say instead of returning nothing. Measured on tuning:
+
+- `qwen3.5:9b` from 72.7% to **75.8%**, hallucination still 0%;
+- 9B answerable wrongly declined from 9 to 6 of 26;
+- fresh 49: 85.7% / 0%;
+- `qwen3:4b` 75.8–78.8% / 3.0% on tuning, but 4.1% hallucination on the fresh set.
+
+A refined wording was tried and rejected (STUDY_GUIDE 10.25).
+
 **7. Corpus now:** 7 documents, 225 sections (222 indexed), 307 chunks; 564 tests.
 
 ### 0.1 What happened
