@@ -240,6 +240,12 @@ _ATTENDANCE_COUNT_RE = re.compile(
 )
 
 
+_OWN_ATTENDANCE_RE = re.compile(
+    r"\b(?:i|my|me)\b.*\b(?:attend\w*|classes|lectures)\b|\b(?:attend\w*|classes|lectures)\b.*\b(?:i|my|me)\b",
+    re.IGNORECASE,
+)
+
+
 def judge_views(question: str) -> list[str]:
     """The question as asked, plus a normalised copy for the relevance judge.
 
@@ -259,7 +265,14 @@ def judge_views(question: str) -> list[str]:
     view = _ATTENDANCE_COUNT_RE.sub(to_percent, view)
     for pattern, replacement in _JUDGE_GLOSSARY:
         view = pattern.sub(replacement, view)
-    return [question] if view == question else [question, view]
+    views = [question] if view == question else [question, view]
+    # A student's own attendance situation is a question about the attendance
+    # rule and what follows from it. Measured: "will I get detained?" judged
+    # the verified consequences ("registration will be treated as cancelled",
+    # "'I' grade") off topic; the rule's own question scores them as answers.
+    if _OWN_ATTENDANCE_RE.search(question):
+        views.append("What happens if a student's attendance is below the minimum required?")
+    return views
 
 
 # Questions whose answer IS a name: "Which software ...?", "Who is the

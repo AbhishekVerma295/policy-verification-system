@@ -441,3 +441,13 @@ def test_which_needs_a_name_only_before_a_named_kind_of_thing():
     # Answered by a description, not a name.
     assert not asks_for_a_name("Which of my published articles can be excluded from the check?")
     assert not asks_for_a_name("I got rank 300. Which scholarship can I get?")
+
+
+def test_an_own_attendance_question_is_also_judged_as_the_rules_question():
+    """Measured: the verified consequences ('registration will be treated as
+    cancelled', ''I' grade') were judged off topic for 'will I get detained?'."""
+    from policyverify.verify.relevance import judge_views
+
+    views = judge_views("i have attended 74 classes out of 100, will i get detained?")
+    assert "What happens if a student's attendance is below the minimum required?" in views
+    assert len(judge_views("What is the attendance code for 90%?")) == 1

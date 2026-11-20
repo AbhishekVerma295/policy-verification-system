@@ -373,6 +373,19 @@ class RelevanceConfig(BaseModel):
     judge_max_claims: int = 6
 
 
+class AnswerConfig(BaseModel):
+    """How the answer is presented.
+
+    `compose`: after verification, the language model writes a short answer
+    from the KEPT claims only, and every sentence is checked against them
+    with the NLI model; unsupported sentences are removed (compose.py). It
+    costs one short model call - the prompt is the verified facts, not the
+    passages.
+    """
+
+    compose: bool = True
+
+
 class Config(BaseModel):
     """The whole configuration."""
 
@@ -385,6 +398,7 @@ class Config(BaseModel):
     verification: VerificationConfig = Field(default_factory=VerificationConfig)
     abstention: AbstentionConfig = Field(default_factory=AbstentionConfig)
     relevance: RelevanceConfig = Field(default_factory=RelevanceConfig)
+    answer: AnswerConfig = Field(default_factory=AnswerConfig)
 
     def fingerprint(self) -> dict[str, str]:
         """A short summary of the settings that affect results.

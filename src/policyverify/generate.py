@@ -42,6 +42,7 @@ import re
 from policyverify.config import Config, get_config
 from policyverify.llm import LLMBackend, LLMError, get_llm
 from policyverify.schema import Claim, DraftAnswer, RetrievedChunk
+from policyverify.situation import mask_user_figures
 
 logger = logging.getLogger(__name__)
 
@@ -424,7 +425,9 @@ def generate_claims(
         # failure mode we are trying to prevent.
         return DraftAnswer(claims=[])
 
-    prompt = build_prompt(question, chunks, config)
+    # The asker's own attendance figures are masked for the model - see
+    # situation.mask_user_figures; the comparison is done in code instead.
+    prompt = build_prompt(mask_user_figures(question), chunks, config)
     schema = DraftAnswer.model_json_schema()
     attempts = config.llm.max_parse_retries + 1
     last_raw = ""

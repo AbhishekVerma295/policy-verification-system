@@ -526,10 +526,12 @@ class Timings(BaseModel):
     # part of checking), so it is not added again in total_ms; this field only
     # says how much of verify_ms it was.
     relevance_ms: float = 0.0
+    # Writing the answer text from the verified facts (compose.py).
+    compose_ms: float = 0.0
 
     @property
     def total_ms(self) -> float:
-        return self.retrieve_ms + self.generate_ms + self.verify_ms
+        return self.retrieve_ms + self.generate_ms + self.verify_ms + self.compose_ms
 
 
 class Answer(BaseModel):
@@ -557,6 +559,15 @@ class Answer(BaseModel):
     # computed by situation.py, never by the model. None when the question
     # gives no figure or no single verified threshold applies.
     situation: str | None = None
+    # Set when the question asked for a list ("what are the types of X?") and
+    # it was answered from the document's numbered list (listing.py):
+    # "The policy lists 10 types of plagiarism:". The kept claims are the items.
+    list_intro: str | None = None
+    # A written answer - direct first sentence, short explanation - made only
+    # from the kept claims, with every sentence checked against them
+    # (compose.py). None when composing is off or nothing survived the check.
+    composed: str | None = None
+    composed_dropped: int = 0
     situation_citation: str | None = None
 
     timings: Timings = Field(default_factory=Timings)

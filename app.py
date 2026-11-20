@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import html
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -304,11 +305,35 @@ def draw_answer_summary(answer: Answer, store: VectorStore) -> None:
     to the university's own page.
     """
     refs, sources = number_sources(answer.claims_kept)
-    lines = [
-        f"- {html.escape(v.claim.text)} "
-        + "".join(f"<sup>[{n}]</sup>" for n in r)
-        for v, r in zip(answer.claims_kept, refs, strict=True)
-    ]
+    list_intro = getattr(answer, "list_intro", None)
+    if list_intro:
+        # A list question answered from the document's numbered list: each
+        # item named by its section heading, then its definition, quoted.
+        lines = [html.escape(list_intro), ""]
+        for i, (v, r) in enumerate(zip(answer.claims_kept, refs, strict=True), start=1):
+            chunks = store.get_by_citation(v.claim.citation_ids[0]) if v.claim.citation_ids else []
+            name = chunks[0].section_path.split(" > ")[-1] if chunks else ""
+            lines.append(
+                f"{i}. **{html.escape(name)}** - {html.escape(v.claim.text)} "
+                + "".join(f"<sup>[{n}]</sup>" for n in r)
+            )
+    elif getattr(answer, "composed", None):
+        # The written answer, then the verified facts it was built from. Its
+        # [n] markers are fact numbers, so the facts are numbered the same way.
+        prose = html.escape(answer.composed)
+        prose = re.sub(r"\[(\d+)\]", r"<sup>[\1]</sup>", prose)
+        lines = [prose, "", "**Verified facts this answer is built from**", ""]
+        for i, (v, r) in enumerate(zip(answer.claims_kept, refs, strict=True), start=1):
+            lines.append(
+                f"{i}. {html.escape(v.claim.text)} "
+                + "".join(f"<sub>source {n}</sub>" for n in r)
+            )
+    else:
+        lines = [
+            f"- {html.escape(v.claim.text)} "
+            + "".join(f"<sup>[{n}]</sup>" for n in r)
+            for v, r in zip(answer.claims_kept, refs, strict=True)
+        ]
     with st.container(border=True):
         st.markdown("##### :material/verified: Answer")
         situation = getattr(answer, "situation", None)
@@ -369,15 +394,27 @@ def draw_answer(answer: Answer, passages: list, store: VectorStore) -> None:
         draw_answer_summary(answer, store)
         if answer.reason:
             st.info(answer.reason, icon=":material/info:")
-        st.markdown("##### How each statement was checked")
-        st.caption(
-            "Every statement above was checked against the policy text it cites. "
-            "Support runs from 0.00 to 1.00."
-        )
-        for i, verdict in enumerate(answer.claims_kept):
-            draw_claim(verdict, store, key=f"kept-{i}")
+        # The proof behind the answer, one click away rather than in the way.
+        # A toggle, not an expander: each card already holds an expander, and
+        # Streamlit does not allow one inside another.
+        if st.toggle("Show how each statement was checked", key="show-checks"):
+            st.caption(
+                "Every statement was checked against the policy text it cites. "
+                "Support runs from 0.00 to 1.00."
+            )
+            for i, verdict in enumerate(answer.claims_kept):
+                draw_claim(verdict, store, key=f"kept-{i}")
 
-    if answer.claims_removed:
+    # When the system declined, the removed claims ARE the explanation, so they
+    # stay in view; under an answer they are detail, behind a toggle.
+    show_removed = answer.abstained or (
+        answer.claims_removed
+        and st.toggle(
+            f"Show statements the system removed ({len(answer.claims_removed)})",
+            key="show-removed",
+        )
+    )
+    if answer.claims_removed and show_removed:
         st.space("small")
         st.markdown(f"##### Removed claims ({len(answer.claims_removed)})")
         st.caption(

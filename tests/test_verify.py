@@ -827,3 +827,61 @@ def test_number_words_without_a_unit_are_not_numbers():
     result = check_numbers("Students in one of the following categories qualify.",
                            ["categories of candidates are eligible"])
     assert result.ok and result.claim_numbers == []
+
+
+# ---------------------------------------------------------------------------
+# Polarity: a negative paraphrase must be supported more than its opposite
+# ---------------------------------------------------------------------------
+
+
+def test_flip_negation_on_real_claims():
+    from policyverify.verify.polarity import flip_negation, has_negation
+
+    assert flip_negation("The number of classes attended does not affect the detention policy.") == (
+        "The number of classes attended does affect the detention policy.")
+    assert flip_negation("Fees once paid will not be refunded normally.") == (
+        "Fees once paid will be refunded normally.")
+    assert flip_negation("No refund is permitted, if the student is expelled.") == (
+        "A refund is permitted, if the student is expelled.")
+    assert flip_negation("Students cannot withdraw.") == "Students can withdraw."
+    assert not has_negation("Students must attend 75% of classes.")
+
+
+def test_the_polarity_rule_on_measured_scores():
+    """Real DeBERTa scores (claim, twin): the two misleading claims, then
+    correct negative rules."""
+    from policyverify.verify.polarity import polarity_undecided
+
+    assert polarity_undecided(0.759, 0.660, 0.5, 0.2)   # "does not affect detention"
+    assert polarity_undecided(0.987, 0.816, 0.5, 0.2)   # "does not directly determine"
+    assert not polarity_undecided(1.000, 0.000, 0.5, 0.2)  # fees not refunded
+    assert not polarity_undecided(0.995, 0.073, 0.5, 0.2)  # theft complaints
+
+
+class _PolarityNLI:
+    """Entails both a negative claim and its positive twin - the failure."""
+
+    def check(self, premise, hypothesis):
+        from policyverify.verify.nli import ENTAILMENT, NLIResult
+
+        return NLIResult(label=ENTAILMENT, entailment=0.76, neutral=0.2, contradiction=0.04,
+                         window="If a candidate does not earn the required attendance ...")
+
+
+def test_a_negative_claim_whose_opposite_is_also_supported_is_not_verified():
+    from policyverify.verify.verifier import verify_claim
+
+    chunk = Chunk(
+        chunk_id="srm/examination/V-detention#0",
+        text="If a candidate does not earn the required attendance he/she will be allowed "
+             "to sit for the examinations after satisfying the required attendance.",
+        citation_id="srm/examination/V-detention",
+        university="srm", university_name="SRM", policy_type=PolicyType.EXAMINATION,
+        section_path="Examination Policy > Detention", source_url="https://example.edu",
+    )
+    claim = Claim(text="The number of classes attended does not affect the detention policy.",
+                  citation_ids=["srm/examination/V-detention"])
+    verdict = verify_claim(claim, [RetrievedChunk(chunk=chunk, score=0.9, rank=0)],
+                           nli=_PolarityNLI(), config=load_config())
+    assert verdict.status is VerdictStatus.NEUTRAL
+    assert "opposite" in verdict.explanation
