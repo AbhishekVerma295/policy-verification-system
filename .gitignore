@@ -61,3 +61,40 @@ paper/
 # Evaluation results: the per-item run logs (*.jsonl, ignored above) are large
 # and local. The small *.summary.json files next to them ARE committed - they
 # are the benchmark results, and a result nobody can see is not a deliverable.
+
+# The per-question logs of the two reported runs ARE committed: the app's
+# "Evaluation results" tab reads them (ui_evaluation.py).
+!eval/results/run-20261120-165959.jsonl
+!eval/results/run-20261116-104137.jsonl
+
+# --- Local-only files ------------------------------------------------------
+# Office lock files, local tool settings, and a stray file from a broken command.
+~$*
+.claude/
+review$f.png
+
+# --- Superseded review material (kept on the authors' machines) --------------
+# Older decks: Review 1 is "RAI REVIEW 1 PPT (final).pptx", the final review
+# is "RAI REVIEW 2 PPT (version 2).pptx".
+review/RAI REVIEW 1 PPT.pptx
+review/RAI REVIEW 1 PPT (updated).pptx
+review/RAI REVIEW 1(2) PPT.pptx
+review/Final_Review_Presentation.pptx
+review/First_Review_Presentation1.pptx
+review/PPT_Slide_Content.md
+review/Final_Deck_Content.md
+# Older diagrams; the current ones are the *_v3 files.
+review/Architecture_Basic.*
+review/Architecture_Basic_v2.*
+review/LLD_Slide1_Preparation_Retrieval_v2.*
+review/LLD_Slide2_Generation_Verification_v2.*
+review/Architecture_Block_Diagram.*
+review/Architecture_Flowchart_With_Data_Prep*
+review/Architecture_LLD_Mermaid.md
+review/Prep_LLD_*
+# Version 1 export; RESEARCH_PAPER_DATA.md is the current one.
+RESEARCH_PAPER_DATA.docx
+# Early smoke tests (8, 8 and 1 questions, a different model).
+eval/results/run-20261113-141356.summary.json
+eval/results/run-20261113-142127.summary.json
+eval/results/run-20261113-143255.summary.json
