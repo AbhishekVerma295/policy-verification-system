@@ -53,16 +53,6 @@ STYLES = {
 # A supported claim withheld because it does not answer the question asked.
 OFF_TOPIC_STYLE = ("TRUE BUT OFF TOPIC", "#6b7280", "rgba(107, 114, 128, 0.10)")
 
-# What the page says while each pipeline stage runs.
-STAGE_MESSAGES = {
-    "retrieve": "1/4  Searching the policy documents for relevant passages ...",
-    "generate": "2/4  The language model is writing claims from those passages "
-    "(the slow step: 1-2 minutes without a GPU) ...",
-    "verify": "3/4  Checking every claim against the policy text it cites, "
-    "and that it answers the question ...",
-    "decide": "4/4  Keeping verified claims, removing the rest ...",
-}
-
 # Example questions. Each one was answered correctly, with every claim
 # verified, in the evaluation run - and generation runs at temperature 0, so
 # the same question gives the same answer. They cover four different policy
@@ -554,10 +544,12 @@ if to_run:
     policy = None
     top_k = config.retrieval.top_k
     try:
-        with st.status("Working on your question ...", expanded=True) as status:
-            def show_stage(name: str) -> None:
-                status.write(STAGE_MESSAGES[name])
-
+        # A plain spinner that disappears when the answer is drawn. The
+        # step-by-step status panel stayed on the page after the answer, and
+        # users did not want it; per-stage timings are still in the metrics
+        # row under each answer. (main's version of this file still had the
+        # panel, and the merge brought it back without a conflict.)
+        with st.spinner("Finding and checking the answer ..."):
             answer = answer_question(
                 to_run,
                 k=top_k,
@@ -566,17 +558,11 @@ if to_run:
                 store=store,
                 llm=llm,
                 nli=nli,
-                on_stage=show_stage,
             )
             # Same call the pipeline made, repeated so the passages can be
             # shown. Retrieval is deterministic, so these are the same ones.
             passages = retrieve(
                 to_run, k=top_k, policy_type=policy, config=config, store=store
-            )
-            status.update(
-                label=f"Done in {answer.timings.total_ms / 1000:.0f} seconds",
-                state="complete",
-                expanded=False,
             )
         st.session_state["result"] = (answer, passages)
     except (LLMError, GenerationError) as exc:
