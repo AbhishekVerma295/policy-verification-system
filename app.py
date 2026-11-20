@@ -195,6 +195,14 @@ def draw_claim(verdict: ClaimVerdict, store: VectorStore, key: str) -> None:
 
     with st.expander("Evidence and checks", key=key):
         checks = verdict.checks
+        # Each part of this panel is labelled, because the same policy text
+        # appears twice (the deciding sentence, then the whole chunk) and
+        # readers asked which is which.
+        st.caption(
+            "**1 · Checks.** Entailment: does the policy text prove the statement? "
+            "Numbers: is every figure in the statement also in the text? "
+            "Citation: is the cited section real, and was it shown to the model?"
+        )
         c1, c2, c3 = st.columns(3)
         # Two different numbers live here and they are easy to confuse. The
         # card above shows SUPPORT - how strongly the passage entails the
@@ -227,6 +235,10 @@ def draw_claim(verdict: ClaimVerdict, store: VectorStore, key: str) -> None:
                 if verdict.status is VerdictStatus.REFUTED
                 else "Supporting sentence"
             )
+            st.caption(
+                "**2 · Deciding sentence.** The checker splits the chunk into sentences "
+                "and short runs of sentences; this is the one that decided the verdict."
+            )
             st.markdown(f"**{heading}** &middot; {html.escape(checks.evidence_chunk_id or '')}")
             st.text(evidence_text)
         contradicting_text = getattr(checks, "contradicting_text", None)
@@ -240,9 +252,18 @@ def draw_claim(verdict: ClaimVerdict, store: VectorStore, key: str) -> None:
         chunks = evidence_for(verdict, store)
         if not chunks:
             st.caption("No policy text could be resolved for this claim's citations.")
+        else:
+            st.caption(
+                "**3 · Full chunk.** The stored passage the model was given and the checker "
+                "read: part of one policy section, at most about 1,800 characters. "
+                "`#0` is the section's first chunk, `#1` its second, and so on."
+            )
         for chunk in chunks:
             st.markdown(f"**{chunk.section_path or chunk.citation_id}**")
-            st.caption(f"{chunk.citation_id}  ·  [{chunk.university_name} source]({chunk.source_url})")
+            st.caption(
+                f"chunk {chunk.chunk_id}  ·  "
+                f"[{chunk.university_name} source]({chunk.source_url})"
+            )
             st.text(chunk.text)
 
 
