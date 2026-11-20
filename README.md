@@ -228,6 +228,24 @@ set POLICYVERIFY_LLM_MODEL=qwen2.5:3b          # Windows cmd
 $env:POLICYVERIFY_LLM_MODEL = "qwen2.5:3b"     # PowerShell
 ```
 
+Or, once per machine, create `config.local.yaml` next to `config.yaml`
+(it is git-ignored). It overrides `config.yaml` section by section, so the
+app, the scripts and the evaluation all use it without a variable in every
+shell:
+
+```yaml
+llm:
+  model: qwen2.5:3b   # whatever `ollama list` shows on this machine
+```
+
+If the app says the language model is not reachable, the configured model
+is usually not pulled on that machine: compare `ollama list` with the model
+named in `config.yaml` / `config.local.yaml`.
+
+To see exactly what the model is given and what it replies - instructions,
+passages, section summaries - set `POLICYVERIFY_LOG_PROMPTS=1`; every call is
+written to `data/logs/prompts/` as a text file.
+
 Output is per claim, with a verdict, a confidence, the citation, and a
 plain-language explanation of *why* that verdict was reached. Claims that
 failed verification are **shown, not hidden**. The block below is an

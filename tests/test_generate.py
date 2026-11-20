@@ -464,3 +464,18 @@ def test_prompt_shows_the_whole_chunk_by_default():
     retrieved = _retrieved()
     retrieved.chunk.text = "y" * (cfg.max_chars + cfg.overlap_chars)
     assert retrieved.chunk.text in build_prompt("q", [retrieved])
+
+
+def test_a_label_copied_in_front_of_the_id_is_removed():
+    """Measured on the eval set: 'citation_id: srm/scholarship/3-mat_score'
+    for three true claims, which all lost their citations."""
+    known = {"srm/scholarship/3-mat_score"}
+    for written in (
+        "citation_id: srm/scholarship/3-mat_score",
+        "[citation_id: srm/scholarship/3-mat_score]",
+        "Citation ID: srm/scholarship/3-mat_score",
+        "[srm/scholarship/3-mat_score]",
+    ):
+        assert resolve_citation(written, known) == "srm/scholarship/3-mat_score"
+    # Still strict: a label in front of an invented ID resolves to nothing.
+    assert resolve_citation("citation_id: srm/scholarship/9-invented", known) is None
