@@ -82,6 +82,9 @@ _CAPS_RE = re.compile(r"^[A-Z][A-Z0-9 /&,\-()]{3,90}:?$")
 _INLINE_HEADING_RE = re.compile(r"(?:^|\s)(\d+(?:\.\d+)+)\s+([A-Z][A-Za-z][^:\n]{2,58}):")
 
 _MAX_HEADING_LEN = 100
+# Text before the first heading becomes a "Preamble" section only when it is
+# this long: a bare document title ("Examination Policy") is not content.
+_MIN_PREAMBLE_WORDS = 25
 
 # A Roman numeral from I to XXXIX, then "." or ")" and (optionally) the
 # heading text. Only I, V and X are accepted: C, D, L and M are Roman too,
@@ -143,7 +146,13 @@ def _is_titlecase_majority(text: str, min_ratio: float = 0.5) -> bool:
     against SRM's real examination policy: without it, enumerated list
     items were being mistaken for section headings.
     """
-    words = [w for w in text.split() if w[:1].isalpha()]
+    # Bracketed text is a gloss on the heading, not the heading, so it is left
+    # out of the count. Before, half of it counted: "Secondary sources
+    # (Inaccurate citation)" - the plagiarism policy's type 1 - scored 1 of 3
+    # ("(Inaccurate" skipped, "citation)" counted) and was rejected, losing
+    # that section. Counting ALL of it instead broke "Founder's Scholarship
+    # (applicable for 4 years)", so the brackets are removed whole.
+    words = [w for w in re.sub(r"\([^)]*\)?", " ", text).split() if w[:1].isalpha()]
     if not words:
         return False
     capitalized = sum(1 for w in words if w[0].isupper())
@@ -271,6 +280,15 @@ def split_into_sections(text: str, title: str) -> list[Section]:
         return [Section(number=None, heading=title, text=body, path=[title], level=1)]
 
     sections: list[Section] = []
+    # Text before the first heading. Usually only the document's title,
+    # which is dropped; but the plagiarism policy opens with its Preamble
+    # and the DEFINITION of plagiarism, and dropping that made "what is
+    # plagiarism?" unanswerable. Kept as a section when it is real content.
+    lead = "\n".join(lines[: headings[0][0]]).strip()
+    if len(lead.split()) >= _MIN_PREAMBLE_WORDS:
+        sections.append(
+            Section(number=None, heading="Preamble", text=lead, path=[title, "Preamble"], level=2)
+        )
     for idx, (line_no, number, heading) in enumerate(headings):
         start = line_no + 1
         end = headings[idx + 1][0] if idx + 1 < len(headings) else len(lines)

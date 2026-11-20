@@ -671,3 +671,39 @@ def test_rendering_a_table_does_not_change_which_lines_count_as_page_furniture()
     )
     assert "SRM RUNNING HEADER" not in text
     assert "Name: Sannasi A | Phone: 8056016605." in text
+
+
+def test_content_before_the_first_heading_is_kept_as_a_preamble():
+    """Real failure: the plagiarism policy's Preamble and its DEFINITION of
+    plagiarism came before the first detected heading and were dropped, so
+    'what is plagiarism?' had no source in the index."""
+    from policyverify.ingest.normalize import split_into_sections
+
+    text = (
+        "Plagiarism Policy\nPreamble:\n" + "Ethics and honesty matter in research. " * 6
+        + "\nDefinition of Plagiarism: presenting another person's work as one's own.\n"
+        "2. Invalid Sources (Misleading Citation)\nInvalid source attribution occurs when ...\n"
+        "3. Duplication (Self Plagiarism)\nDuplication happens when ...\n"
+    )
+    sections = split_into_sections(text, "Plagiarism Policy")
+    assert sections[0].heading == "Preamble"
+    assert "Definition of Plagiarism" in sections[0].text
+
+
+def test_a_bare_title_before_the_first_heading_is_not_a_preamble():
+    from policyverify.ingest.normalize import split_into_sections
+
+    text = "Examination Policy\n1. Registration Of Courses\nStudents register ...\n2. Award Of Degree\nDegrees ...\n"
+    assert [s.heading for s in split_into_sections(text, "Examination Policy")] == [
+        "Registration Of Courses", "Award Of Degree"]
+
+
+def test_bracketed_glosses_do_not_decide_whether_a_line_is_a_heading():
+    from policyverify.ingest.normalize import _is_numbered_heading
+
+    # Rejected before - the plagiarism policy's type 1.
+    assert _is_numbered_heading("1. Secondary sources (Inaccurate citation)")
+    # Must stay a heading: counting the bracket's lowercase words broke it.
+    assert _is_numbered_heading("1. Founder's Scholarship (applicable for 4 years)")
+    # Still not a heading: sentence-case prose.
+    assert not _is_numbered_heading("1. all examinations undertaken shall be cancelled")
