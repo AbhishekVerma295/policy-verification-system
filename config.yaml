@@ -58,6 +58,10 @@ retrieval:
   # convocation procedure (checked 2026-11-20), so the labels cannot be
   # trusted to filter with. Re-enable after re-checking them.
   audience_filter: false
+  # Re-rank the best 20 passages with the cross-encoder (relevance section)
+  # before taking top_k. Each passage then has a 0-1 relevance probability.
+  rerank: true
+  rerank_depth: 20
 
 llm:
   backend: ollama
@@ -94,3 +98,12 @@ abstention:
   min_supported_claims: 1
   # Retired: no longer read by abstain.py (it never fired; see config.py).
   min_retrieval_score: 0.25
+
+relevance:
+  # Does a verified claim answer the question? "cross_encoder" scores each
+  # claim with a small query/passage model; "llm" asks the language model.
+  # On qwen2.5:3b the LLM judge kept 6 of 18 real answers in a 27-case test;
+  # the cross-encoder kept 18 of 18 (eval/RESULTS_LOG.md).
+  judge: cross_encoder
+  cross_encoder_model: cross-encoder/ms-marco-MiniLM-L-6-v2
+  cross_encoder_threshold: 0.3

@@ -454,3 +454,51 @@ def test_entity_boost_reorders_the_embedding_side_before_the_hybrid_merge():
     results = retrieve("Can a parent stay?", k=2, config=_config(pool=2), store=store)
     assert [r.chunk.chunk_id for r in results] == [second.chunk_id, first.chunk_id]
     assert results[0].boost == 0.05 and results[0].score == 0.69
+
+
+# ---------------------------------------------------------------------------
+# Cross-encoder re-ranking (retrieval.rerank)
+# ---------------------------------------------------------------------------
+
+
+class _FakeReranker:
+    def __init__(self, probs_by_text):
+        self.probs_by_text = probs_by_text
+        self.seen = []
+
+    def scores(self, question, texts):
+        self.seen.extend(texts)
+        return [self.probs_by_text.get(t.split(": ", 1)[1], 0.0) for t in texts]
+
+
+def test_rerank_orders_by_relevance_and_records_the_probability():
+    from policyverify.retrieve import rerank_by_relevance
+
+    candidates = _results([(A, 0.70), (B, 0.65)])
+    reranker = _FakeReranker({f"Text of {B} piece 0.": 0.98, f"Text of {A} piece 0.": 0.10})
+    out = rerank_by_relevance("q", candidates, k=2, reranker=reranker, max_per_citation=2)
+    assert [r.chunk.citation_id for r in out] == [B, A]
+    assert out[0].rerank_score == 0.98
+    assert out[0].score == 0.65, "the cosine similarity is kept as it was"
+    # The section heading goes in with the text.
+    assert reranker.seen[0].startswith("Section: ")
+
+
+def test_a_failing_reranker_leaves_the_hybrid_order():
+    from policyverify.retrieve import rerank_by_relevance
+
+    class _Broken:
+        def scores(self, question, texts):
+            raise RuntimeError("not downloaded")
+
+    candidates = _results([(A, 0.70), (B, 0.65)])
+    out = rerank_by_relevance("q", candidates, k=2, reranker=_Broken(), max_per_citation=2)
+    assert [r.chunk.citation_id for r in out] == [A, B]
+    assert out[0].rerank_score is None
+
+
+def test_no_reranking_for_a_store_without_an_embedder():
+    """Stand-in stores (tests) must never load the cross-encoder."""
+    from policyverify.retrieve import _reranker_for
+
+    assert _reranker_for(_SearchOnlyStore(), load_config()) is None

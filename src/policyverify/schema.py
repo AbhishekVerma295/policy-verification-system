@@ -373,6 +373,9 @@ class RetrievedChunk(BaseModel):
     # See entities.py. Results are ordered by `rank_score`.
     boost: float = 0.0
     matched_entities: list[str] = Field(default_factory=list)
+    # The cross-encoder's probability (0-1) that this passage answers the
+    # question, when re-ranking ran (retrieval.rerank). See retrieve.py.
+    rerank_score: float | None = None
 
     @property
     def rank_score(self) -> float:

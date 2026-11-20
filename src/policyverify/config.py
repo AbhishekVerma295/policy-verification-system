@@ -91,6 +91,11 @@ class ChunkingConfig(BaseModel):
     # Show the summary to the answering model, labelled as context it must
     # not cite. Turn this off to measure whether the summary helps.
     summary_in_prompt: bool = True
+    # The model that writes the summaries, when it should differ from llm.model.
+    # Summaries are cached by model name, so without this, switching the
+    # answering model would discard every cached summary at the next build.
+    # None = use llm.model.
+    summary_model: str | None = None
 
 
 class RetrievalConfig(BaseModel):
@@ -160,6 +165,13 @@ class RetrievalConfig(BaseModel):
     # fewer than top_k passages, the rest come from the unfiltered search.
     # Has no effect on an index built before audience labels existed.
     audience_filter: bool = True
+
+    # Re-rank the best `rerank_depth` passages with the cross-encoder named in
+    # relevance.cross_encoder_model before taking top_k. Measured on 72
+    # answerable evaluation questions: the expected section reached the top 6
+    # for 71 (68 without), and each passage gets a 0-1 relevance probability.
+    rerank: bool = True
+    rerank_depth: int = 20
 
 
 class LLMConfig(BaseModel):

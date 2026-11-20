@@ -415,9 +415,13 @@ def draw_answer(answer: Answer, passages: list, store: VectorStore) -> None:
                 f" +{r.boost:.3f} ({', '.join(r.matched_entities)})" if r.boost else ""
             )
             readers = f" &nbsp; _for {', '.join(r.chunk.audience)}_" if r.chunk.audience else ""
-            st.markdown(
-                f"`{r.score:.3f}{boost}` &nbsp; **{r.chunk.citation_id}**{readers}"
+            relevance = getattr(r, "rerank_score", None)
+            shown = (
+                f"relevance {relevance:.2f} · similarity {r.score:.3f}{boost}"
+                if relevance is not None
+                else f"{r.score:.3f}{boost}"
             )
+            st.markdown(f"`{shown}` &nbsp; **{r.chunk.citation_id}**{readers}")
             st.caption(r.chunk.text[:400] + ("..." if len(r.chunk.text) > 400 else ""))
 
     with st.expander("Raw answer (JSON)", icon=":material/code:"):
