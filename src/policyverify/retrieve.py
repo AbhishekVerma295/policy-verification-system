@@ -278,57 +278,6 @@ def _hybrid_candidates(
     return out
 
 
-def _reranker_for(store, config: Config):
-    """The cross-encoder for re-ranking, or None.
-
-    Only in the real environment - a store with an embedder - for the same
-    reason the relevance gate does this: a stand-in store in a test must not
-    download or load a model.
-    """
-    if not config.retrieval.rerank or getattr(store, "embedder", None) is None:
-        return None
-    from policyverify.verify.relevance import cross_encoder_for
-
-    rel = config.relevance
-    return cross_encoder_for(rel.cross_encoder_model, rel.cross_encoder_device)
-
-
-def rerank_by_relevance(
-    question: str,
-    candidates: list[RetrievedChunk],
-    k: int,
-    reranker,
-    max_per_citation: int,
-) -> list[RetrievedChunk]:
-    """Re-order candidates by a cross-encoder's relevance, then take `k`.
-
-    The cross-encoder reads the question and each passage together - with
-    its section heading, which often carries the topic - and gives the
-    probability that the passage answers the question. That probability is
-    kept as `rerank_score`: unlike the cosine `score` (about 0.6-0.7 even for
-    an exact match), it means what a reader expects a relevance score to
-    mean. Measured on 72 answerable evaluation questions: the expected
-    section reached the top 6 for 71 (68 without re-ranking), and the best
-    passage scored a median of 0.986.
-    """
-    if not candidates:
-        return candidates
-    texts = [
-        f"{r.chunk.section_path.split(' > ')[-1]}: {r.chunk.text}" for r in candidates
-    ]
-    try:
-        probs = reranker.scores(question, texts)
-    except Exception:  # noqa: BLE001 - re-ranking is an improvement, never a requirement
-        return diversify(candidates, k, max_per_citation)
-    scored = [
-        r.model_copy(update={"rerank_score": round(p, 4)})
-        for r, p in zip(candidates, probs, strict=True)
-    ]
-    # sorted() is stable: equal scores keep the hybrid order.
-    scored.sort(key=lambda r: -r.rerank_score)
-    return diversify(scored, k, max_per_citation)
-
-
 def retrieve(
     question: str,
     k: int | None = None,
@@ -379,11 +328,7 @@ def retrieve(
                     **_audience_kwargs(audience),
                 )
             )
-        reranker = _reranker_for(store, config)
-        if reranker is None:
-            return diversify(candidates, top_k, cfg.max_chunks_per_citation)
-        pool = diversify(candidates, cfg.rerank_depth, cfg.max_chunks_per_citation)
-        return rerank_by_relevance(question, pool, top_k, reranker, cfg.max_chunks_per_citation)
+        return diversify(candidates, top_k, cfg.max_chunks_per_citation)
 
     audience = query_audience(question, config, store)
     results = search(audience)

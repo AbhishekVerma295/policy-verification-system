@@ -12,7 +12,6 @@ odd, long after the fact.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
@@ -36,9 +35,6 @@ from policyverify.evalset import (
 )
 
 VALID_CITATION = "srm/attendance/7.3-minimum_attendance"
-
-SCENARIO_SET = Path(__file__).resolve().parents[1] / "eval" / "scenarios.jsonl"
-SECTION_SETS = Path(__file__).resolve().parents[1] / "eval" / "sections"
 
 
 def _item(**overrides) -> dict:
@@ -223,16 +219,8 @@ def test_the_real_set_loads():
     assert len(items) >= 60, "the set should have at least 60 items to be meaningful"
 
 
-def _all_real_items():
-    """The adversarial set plus the scenario set, which has its own file."""
-    items = load_evalset() + load_evalset(SCENARIO_SET)
-    for path in sorted(SECTION_SETS.glob("*.jsonl")):
-        items += load_evalset(path)
-    return items
-
-
 def test_the_real_set_covers_every_trap_category():
-    items = _all_real_items()
+    items = load_evalset()
     present = {i.category for i in items}
     assert present == set(TrapCategory), f"missing: {set(TrapCategory) - present}"
 
@@ -240,7 +228,7 @@ def test_the_real_set_covers_every_trap_category():
 def test_both_halves_cover_every_trap_category():
     """Otherwise a category could be tuned on and never reported, or reported
     on and never tuned - either makes its numbers meaningless."""
-    items = _all_real_items()
+    items = load_evalset()
     for split in Split:
         present = {i.category for i in items if i.split is split}
         assert present == set(TrapCategory), f"{split.value} is missing {set(TrapCategory) - present}"

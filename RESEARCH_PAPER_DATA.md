@@ -27,27 +27,19 @@ models, so do not subtract one from the other.
 
 ## 0. Version 2 — final results (20 November 2026)
 
-> **Which version the results describe.** The final test results (99 questions, `run-20261120-165959`)
-> were measured on **version 2**, tagged **`v2-final-test`** in git (commit `4ba60a4`). After that, a
-> teammate's work (PR #6) was merged into `main`, making **version 3**. It adds:
->
-> - a cross-encoder relevance check instead of the language-model yes/no;
-> - cross-encoder re-ranking of retrieved passages;
-> - situation answers (rule, consequence, exception);
-> - list answers, an answer composed from the verified facts, and a polarity check;
-> - the plagiarism-policy preamble kept at ingestion, which closes the `fb-29` gap.
->
-> Version 3 has **not** been run on the final test. Its first two changes target exactly the main
-> weakness the test found (17 of 25 wrong declines came from the relevance check). Any later result for
-> version 3 on this test set would be a second use of the set and must be reported as such. To
-> reproduce the reported results: `git checkout v2-final-test`, then `python scripts/ingest.py --offline`
-> and `python scripts/build_index.py`.
+> **Which version the results describe.** All final results were measured on **version 2**, tagged
+> **`v2-final-test`** in git. A teammate later proposed further changes (PR #6): a cross-encoder
+> relevance check, re-ranking, situation and list answers, composed answers, a polarity check and a
+> preamble fix. **Only its interface (`app.py`) was kept**; every other part was reverted to the tested
+> version, by the student's decision. So `main` = the tested version 2 plus the new interface. The
+> interface changes only how an answer is shown (answer first, numbered sources, a switch to show how
+> each statement was checked), not what the system answers. The PR #6 code remains in the git history.
 
 ### 0.1 Setup
 
 | | |
 |---|---|
-| Code | git tag `v2-final-test` (commit `4ba60a4`): `23a7064` plus the false-premise prompt rule, committed after the run without change |
+| Code | git tag `v2-final-test`: `23a7064` plus the false-premise prompt rule, committed after the run without change |
 | Answer model | `qwen3.5:9b` (Ollama, Q4_K_M), temperature 0, thinking off |
 | Checker / embeddings | DeBERTa-v3-base-mnli-fever-anli / bge-base-en-v1.5, both CPU |
 | Corpus | 7 documents, 225 sections (222 indexed), 307 chunks of at most 1800 characters |
@@ -228,7 +220,8 @@ In `report/screenshots/`; captions are in `PROJECT_REPORT.md` section 7:
 6. unanswerable declined;
 7. limitation: over-caution;
 8. limitation: correction vetoed;
-9. limitation: conflict not flagged.
+9. limitation: conflict not flagged;
+10. the current interface (same system, new layout).
 
 ---
 

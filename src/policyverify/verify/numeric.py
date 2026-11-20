@@ -31,41 +31,9 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-# Matches 75, 75.5, 1,200, 75%, the spaced form "75 %" that PDF extraction
-# often produces, and a percentage written as a word: "75 percent",
-# "75 per cent", "95 Percentage and above". Measured: without the words, a
-# correct claim saying "75 percent" was vetoed against evidence saying "75%",
-# and a correct "95%" was vetoed against the scholarship table's
-# "95 Percentage and Above" - the same figure, written two ways.
-_PERCENT_WORD = r"(?:per\s?cent|percent)(?:age)?\b"
-_NUMBER_RE = re.compile(
-    rf"(\d[\d,]*(?:\.\d+)?)\s*(%|{_PERCENT_WORD})?", re.IGNORECASE
-)
-
-# "24/7" and "24x7" mean round the clock - one figure, 24, not 24 and 7.
-_ROUND_THE_CLOCK_RE = re.compile(r"(?<![\d/])24\s*[/x×]\s*7(?![\d/])", re.IGNORECASE)
-
-# Numbers written as words, read ONLY when a unit follows ("three days",
-# "ten percent", "twenty-five per cent"). Without them a claim saying "three
-# days" was never checked against evidence saying "7 days". Without the unit
-# requirement, "one of the following" would become the number 1 and fail
-# every claim that used the phrase.
-_WORD_VALUES = {
-    "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
-    "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12,
-    "thirteen": 13, "fourteen": 14, "fifteen": 15, "sixteen": 16,
-    "seventeen": 17, "eighteen": 18, "nineteen": 19, "twenty": 20,
-    "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70,
-    "eighty": 80, "ninety": 90, "hundred": 100,
-}
-_UNITS = (
-    r"days?|weeks?|months?|years?|hours?|minutes?|semesters?|times|credits?"
-)
-_WORD_NUMBER_RE = re.compile(
-    r"\b(" + "|".join(_WORD_VALUES) + r")(?:[\s-](one|two|three|four|five|six|seven|eight|nine))?"
-    rf"\b(?=\s*(%|{_PERCENT_WORD}|(?:{_UNITS})\b))",
-    re.IGNORECASE,
-)
+# Matches 75, 75.5, 1,200, 75%, and the spaced form "75 %" that PDF
+# extraction often produces.
+_NUMBER_RE = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*(%?)")
 
 # A clock time: "7:30", "07.30 pm", "9:00 a.m.". With a colon it is always a
 # time; with a dot only when am/pm follows, because "12.10" on its own is a
@@ -164,18 +132,6 @@ def extract_numbers(text: str) -> list[Number]:
             )
         )
         taken.append(match.span())
-    for match in _ROUND_THE_CLOCK_RE.finditer(text):
-        if any(start <= match.start() < end for start, end in taken):
-            continue
-        found.append((match.start(), Number(value=24.0, is_percent=False, raw=match.group(0))))
-        taken.append(match.span())
-    for match in _WORD_NUMBER_RE.finditer(text):
-        tens, units, unit = match.group(1).lower(), match.group(2), match.group(3)
-        value = _WORD_VALUES[tens] + (_WORD_VALUES[units.lower()] if units else 0)
-        is_percent = unit == "%" or re.match(_PERCENT_WORD, unit, re.IGNORECASE) is not None
-        found.append(
-            (match.start(), Number(value=float(value), is_percent=is_percent, raw=match.group(0)))
-        )
     for match in _NUMBER_RE.finditer(text):
         if any(start <= match.start() < end for start, end in taken):
             continue
@@ -185,10 +141,7 @@ def extract_numbers(text: str) -> list[Number]:
         except ValueError:  # pragma: no cover - regex should prevent this
             continue
         found.append(
-            (
-                match.start(),
-                Number(value=value, is_percent=bool(percent), raw=match.group(0).strip()),
-            )
+            (match.start(), Number(value=value, is_percent=percent == "%", raw=match.group(0).strip()))
         )
     return [number for _, number in sorted(found, key=lambda pair: pair[0])]
 

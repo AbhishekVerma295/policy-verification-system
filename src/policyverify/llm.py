@@ -14,12 +14,9 @@ for a future that may not arrive.
 
 from __future__ import annotations
 
-import os
-from datetime import datetime
-from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-from policyverify.config import PROJECT_ROOT, Config, get_config
+from policyverify.config import Config, get_config
 
 
 class LLMError(RuntimeError):
@@ -65,7 +62,6 @@ class OllamaBackend:
             "keep_alive": cfg.keep_alive,
             "options": {
                 "temperature": cfg.temperature,
-                "seed": cfg.seed,
                 "num_ctx": cfg.num_ctx,
                 # A hard ceiling on reply length - see LLMConfig.max_tokens.
                 "num_predict": cfg.max_tokens,
@@ -105,38 +101,7 @@ class OllamaBackend:
                 else ""
             )
             raise LLMError(f"model {cfg.model!r} returned an empty response.{hint}")
-        log_exchange(prompt, text, cfg.model)
         return text
-
-
-PROMPT_LOG_ENV = "POLICYVERIFY_LOG_PROMPTS"
-
-
-def log_exchange(prompt: str, reply: str, model: str) -> Path | None:
-    """Save one prompt and the model's reply, when prompt logging is on.
-
-    Set POLICYVERIFY_LOG_PROMPTS=1 (or to a directory) and every call to the
-    model is written to data/logs/prompts/ as a plain text file: exactly what
-    the model was shown - instructions, passages - and exactly what it said
-    back. This is the way to answer "what did the LLM actually receive?" for
-    any question, without guessing from the code.
-    """
-    target = os.environ.get(PROMPT_LOG_ENV, "").strip()
-    if not target or target == "0":
-        return None
-    folder = (
-        Path(target)
-        if target not in ("1", "true", "yes")
-        else PROJECT_ROOT / "data" / "logs" / "prompts"
-    )
-    folder.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
-    path = folder / f"{stamp}.txt"
-    path.write_text(
-        f"MODEL: {model}\n\n===== PROMPT =====\n{prompt}\n\n===== REPLY =====\n{reply}\n",
-        encoding="utf-8",
-    )
-    return path
 
 
 def get_llm(config: Config | None = None) -> LLMBackend:

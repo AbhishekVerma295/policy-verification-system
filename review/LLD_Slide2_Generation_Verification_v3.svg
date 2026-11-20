@@ -1,0 +1,201 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080"><defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#475569"/></marker></defs><g transform="translate(57.7,0.0) scale(0.9399)"><rect x="24" y="12" width="1872" height="388.0" rx="16" fill="#94A3B8" fill-opacity="0.10" stroke="#94A3B8" stroke-opacity="0.55" stroke-width="1.5"/>
+<rect x="1641.0" y="20" width="239.0" height="26" rx="13" fill="#1E3A8A"/>
+<text x="1760.5" y="38.0" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="13" font-weight="700" fill="#FFFFFF" letter-spacing="0.5" xml:space="preserve">GENERATE · generate.py + llm.py</text>
+<rect x="40" y="52" width="250" height="332.0" rx="12" fill="#FFFFFF" stroke="#6D28D9" stroke-width="2.5"/>
+<path d="M40,64 a12,12 0 0 1 12,-12 h226 a12,12 0 0 1 12,12 v48 h-250 z" fill="#6D28D9"/>
+<text x="56.0" y="78.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="18.5" font-weight="700" fill="#FFFFFF" xml:space="preserve">Inputs from retrieval</text>
+<text x="56.0" y="100.0" font-family="Consolas, 'Cascadia Mono', monospace" font-size="13.5" fill="#E2E8F0" xml:space="preserve">pipeline.answer_question()</text>
+<rect x="52" y="126" width="46" height="20" rx="10" fill="#DBEAFE"/>
+<text x="75.0" y="140.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#1E40AF" xml:space="preserve">IN</text>
+<text x="108.0" y="140.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Question + 6</text>
+<text x="108.0" y="159.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">RetrievedChunk (text,</text>
+<text x="108.0" y="177.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">citation_id, score)</text>
+<rect x="52" y="192.5" width="46" height="20" rx="10" fill="#F3E8FF"/>
+<text x="75.0" y="207.0" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#6B21A8" xml:space="preserve">NEXT</text>
+<text x="108.0" y="207.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Both passed to</text>
+<text x="108.0" y="225.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">generate_answer_draft()</text>
+<path d="M294.0,218.0 L338.0,218.0" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#arrow)"/>
+<rect x="344" y="52" width="470" height="332.0" rx="12" fill="#FFFFFF" stroke="#1E3A8A" stroke-width="2.5"/>
+<path d="M344,64 a12,12 0 0 1 12,-12 h446 a12,12 0 0 1 12,12 v48 h-470 z" fill="#1E3A8A"/>
+<text x="360.0" y="78.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="18.5" font-weight="700" fill="#FFFFFF" xml:space="preserve">1 LLM claim generation</text>
+<text x="360.0" y="100.0" font-family="Consolas, 'Cascadia Mono', monospace" font-size="13.5" fill="#E2E8F0" xml:space="preserve">generate.py · build_prompt() · llm.py · OllamaBackend</text>
+<rect x="356" y="126" width="46" height="20" rx="10" fill="#DBEAFE"/>
+<text x="379.0" y="140.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#1E40AF" xml:space="preserve">IN</text>
+<text x="412.0" y="140.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Question + 6 passages</text>
+<rect x="356" y="159" width="46" height="20" rx="10" fill="#F1F5F9"/>
+<text x="379.0" y="173.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#334155" xml:space="preserve">DO</text>
+<text x="412.0" y="173.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• Leave out passages with text addressed to the assistant</text>
+<text x="412.0" y="192.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• No passages left: 0 claims, model not called</text>
+<text x="412.0" y="210.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• Passages shown whole, labelled [citation_id];</text>
+<text x="424.0" y="229.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">lowest-ranked dropped past 16,000 chars</text>
+<text x="412.0" y="247.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• ≤ 6 claims, one fact per complete sentence; cite exact IDs;</text>
+<text x="424.0" y="266.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">passages are data, not instructions</text>
+<text x="412.0" y="284.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• Qwen3.5 9B via Ollama: temperature 0, JSON schema,</text>
+<text x="424.0" y="303.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">thinking off</text>
+<rect x="356" y="318.0" width="46" height="20" rx="10" fill="#DCFCE7"/>
+<text x="379.0" y="332.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#15803D" xml:space="preserve">OUT</text>
+<text x="412.0" y="332.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Raw reply text (JSON)</text>
+<rect x="356" y="351.0" width="46" height="20" rx="10" fill="#F3E8FF"/>
+<text x="379.0" y="365.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#6B21A8" xml:space="preserve">NEXT</text>
+<text x="412.0" y="365.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Reply passed to parse_draft()</text>
+<path d="M818.0,218.0 L862.0,218.0" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#arrow)"/>
+<rect x="868" y="52" width="470" height="332.0" rx="12" fill="#FFFFFF" stroke="#1E3A8A" stroke-width="2.5"/>
+<path d="M868,64 a12,12 0 0 1 12,-12 h446 a12,12 0 0 1 12,12 v48 h-470 z" fill="#1E3A8A"/>
+<text x="884.0" y="78.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="18.5" font-weight="700" fill="#FFFFFF" xml:space="preserve">2 Structured output parsing</text>
+<text x="884.0" y="100.0" font-family="Consolas, 'Cascadia Mono', monospace" font-size="13.5" fill="#E2E8F0" xml:space="preserve">generate.py · parse_draft() + salvage_claims()</text>
+<rect x="880" y="126" width="46" height="20" rx="10" fill="#DBEAFE"/>
+<text x="903.0" y="140.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#1E40AF" xml:space="preserve">IN</text>
+<text x="936.0" y="140.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Raw reply text</text>
+<rect x="880" y="159" width="46" height="20" rx="10" fill="#F1F5F9"/>
+<text x="903.0" y="173.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#334155" xml:space="preserve">DO</text>
+<text x="936.0" y="173.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• Strip &lt;think&gt; tags and markdown fences; Pydantic</text>
+<text x="948.0" y="192.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">validation: {"claims": [{"text", "citation_ids"}]}</text>
+<text x="936.0" y="210.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• Reply cut off: keep every complete claim, drop the</text>
+<text x="948.0" y="229.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">half-written one</text>
+<text x="936.0" y="247.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• Nothing recoverable: retry once with a stricter prompt,</text>
+<text x="948.0" y="266.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">then GenerationError</text>
+<rect x="880" y="281.0" width="46" height="20" rx="10" fill="#DCFCE7"/>
+<text x="903.0" y="295.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#15803D" xml:space="preserve">OUT</text>
+<text x="936.0" y="295.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">DraftAnswer: list of Claim (text + citation IDs)</text>
+<rect x="880" y="314.0" width="46" height="20" rx="10" fill="#F3E8FF"/>
+<text x="903.0" y="328.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#6B21A8" xml:space="preserve">NEXT</text>
+<text x="936.0" y="328.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Claims passed to drop_unknown_citations()</text>
+<path d="M1342.0,218.0 L1386.0,218.0" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#arrow)"/>
+<rect x="1392" y="52" width="470" height="332.0" rx="12" fill="#FFFFFF" stroke="#1E3A8A" stroke-width="2.5"/>
+<path d="M1392,64 a12,12 0 0 1 12,-12 h446 a12,12 0 0 1 12,12 v48 h-470 z" fill="#1E3A8A"/>
+<text x="1408.0" y="78.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="18.5" font-weight="700" fill="#FFFFFF" xml:space="preserve">3 Citation validation</text>
+<text x="1408.0" y="100.0" font-family="Consolas, 'Cascadia Mono', monospace" font-size="13.0" fill="#E2E8F0" xml:space="preserve">generate.py · drop_unknown_citations() · verify/citation.py</text>
+<rect x="1404" y="126" width="46" height="20" rx="10" fill="#DBEAFE"/>
+<text x="1427.0" y="140.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#1E40AF" xml:space="preserve">IN</text>
+<text x="1460.0" y="140.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Claims + retrieved passages</text>
+<rect x="1404" y="159" width="46" height="20" rx="10" fill="#F1F5F9"/>
+<text x="1427.0" y="173.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#334155" xml:space="preserve">DO</text>
+<text x="1460.0" y="173.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• Citation not among the retrieved passages: repaired if it</text>
+<text x="1472.0" y="192.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">names a clause inside exactly one retrieved section;</text>
+<text x="1472.0" y="210.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">otherwise removed and listed as 'fabricated'</text>
+<text x="1460.0" y="229.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• Remaining citations resolved to their chunk text</text>
+<text x="1472.0" y="247.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">(check_citations())</text>
+<text x="1460.0" y="266.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• Claim left with no citation: NEUTRAL, score 0</text>
+<rect x="1404" y="281.0" width="46" height="20" rx="10" fill="#DCFCE7"/>
+<text x="1427.0" y="295.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#15803D" xml:space="preserve">OUT</text>
+<text x="1460.0" y="295.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Per claim: cited evidence chunks · 'fabricated' list</text>
+<rect x="1404" y="314.0" width="46" height="20" rx="10" fill="#F3E8FF"/>
+<text x="1427.0" y="328.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#6B21A8" xml:space="preserve">NEXT</text>
+<text x="1460.0" y="328.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Claim + its evidence go to NLI and numeric checks</text>
+<rect x="24" y="436.0" width="1872" height="332.5" rx="16" fill="#94A3B8" fill-opacity="0.10" stroke="#94A3B8" stroke-opacity="0.55" stroke-width="1.5"/>
+<rect x="1650.2" y="444.0" width="229.8" height="26" rx="13" fill="#A16207"/>
+<text x="1765.1" y="462.0" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="13" font-weight="700" fill="#FFFFFF" letter-spacing="0.5" xml:space="preserve">VERIFY · once per claim · verify/</text>
+<rect x="40" y="476.0" width="572" height="276.5" rx="12" fill="#FFFFFF" stroke="#A16207" stroke-width="2.5"/>
+<path d="M40,488.0 a12,12 0 0 1 12,-12 h548 a12,12 0 0 1 12,12 v48 h-572 z" fill="#A16207"/>
+<text x="56.0" y="502.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="18.5" font-weight="700" fill="#FFFFFF" xml:space="preserve">4 NLI claim verification</text>
+<text x="56.0" y="524.0" font-family="Consolas, 'Cascadia Mono', monospace" font-size="13.5" fill="#E2E8F0" xml:space="preserve">verify/nli.py · NLIChecker.check()</text>
+<rect x="52" y="550.0" width="46" height="20" rx="10" fill="#DBEAFE"/>
+<text x="75.0" y="564.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#1E40AF" xml:space="preserve">IN</text>
+<text x="108.0" y="564.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Claim (hypothesis) + each cited chunk, its section heading in front (premise)</text>
+<rect x="52" y="583.0" width="46" height="20" rx="10" fill="#F1F5F9"/>
+<text x="75.0" y="597.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#334155" xml:space="preserve">DO</text>
+<text x="108.0" y="597.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• Claim quoted word for word in the passage: entailment, no model needed</text>
+<text x="108.0" y="616.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• Premise split into sentences + runs of 2–3 sentences (SummaC); table</text>
+<text x="120.0" y="634.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">rows and list items as their own units</text>
+<text x="108.0" y="653.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• DeBERTa-v3-base-mnli-fever-anli on CPU, batched; any unit with</text>
+<text x="120.0" y="671.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">entailment ≥ 0.5 supports; else contradiction ≥ 0.5; else strongest signal</text>
+<rect x="52" y="686.5" width="46" height="20" rx="10" fill="#DCFCE7"/>
+<text x="75.0" y="701.0" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#15803D" xml:space="preserve">OUT</text>
+<text x="108.0" y="701.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">NLIResult: label + probabilities + the deciding sentence</text>
+<rect x="52" y="719.5" width="46" height="20" rx="10" fill="#F3E8FF"/>
+<text x="75.0" y="734.0" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#6B21A8" xml:space="preserve">NEXT</text>
+<text x="108.0" y="734.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Results for every cited chunk go to verify_claim()</text>
+<path d="M616.0,614.2 L666.0,614.2" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#arrow)"/>
+<rect x="672" y="476.0" width="572" height="276.5" rx="12" fill="#FFFFFF" stroke="#A16207" stroke-width="2.5"/>
+<path d="M672,488.0 a12,12 0 0 1 12,-12 h548 a12,12 0 0 1 12,12 v48 h-572 z" fill="#A16207"/>
+<text x="688.0" y="502.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="18.5" font-weight="700" fill="#FFFFFF" xml:space="preserve">5 Numeric consistency check</text>
+<text x="688.0" y="524.0" font-family="Consolas, 'Cascadia Mono', monospace" font-size="13.5" fill="#E2E8F0" xml:space="preserve">verify/numeric.py · check_numbers()</text>
+<rect x="684" y="550.0" width="46" height="20" rx="10" fill="#DBEAFE"/>
+<text x="707.0" y="564.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#1E40AF" xml:space="preserve">IN</text>
+<text x="740.0" y="564.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Claim text + cited chunk texts</text>
+<rect x="684" y="583.0" width="46" height="20" rx="10" fill="#F1F5F9"/>
+<text x="707.0" y="597.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#334155" xml:space="preserve">DO</text>
+<text x="740.0" y="597.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• Regex finds numbers: 75%, "75 %", 1,200, 3.5 and clock times (7:30 pm)</text>
+<text x="740.0" y="616.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• Ignores bare 0, 1, 2 (treated as list markers)</text>
+<text x="740.0" y="634.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• Every claim number must appear in the evidence; % must match %, a time</text>
+<text x="752.0" y="653.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">must match a time</text>
+<rect x="684" y="668.0" width="46" height="20" rx="10" fill="#DCFCE7"/>
+<text x="707.0" y="682.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#15803D" xml:space="preserve">OUT</text>
+<text x="740.0" y="682.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">NumericCheck: ok + detail, e.g. "claim states 90%, evidence has 75%"</text>
+<rect x="684" y="701.0" width="46" height="20" rx="10" fill="#F3E8FF"/>
+<text x="707.0" y="715.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#6B21A8" xml:space="preserve">NEXT</text>
+<text x="740.0" y="715.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Result goes to verify_claim(); it can veto support, never grant it</text>
+<path d="M1248.0,614.2 L1298.0,614.2" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#arrow)"/>
+<rect x="1304" y="476.0" width="572" height="276.5" rx="12" fill="#FFFFFF" stroke="#A16207" stroke-width="2.5"/>
+<path d="M1304,488.0 a12,12 0 0 1 12,-12 h548 a12,12 0 0 1 12,12 v48 h-572 z" fill="#A16207"/>
+<text x="1320.0" y="502.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="18.5" font-weight="700" fill="#FFFFFF" xml:space="preserve">6 Claim verdict generation</text>
+<text x="1320.0" y="524.0" font-family="Consolas, 'Cascadia Mono', monospace" font-size="13.5" fill="#E2E8F0" xml:space="preserve">verify/verifier.py · verify_claim() (looped by verify_claims())</text>
+<rect x="1316" y="550.0" width="46" height="20" rx="10" fill="#DBEAFE"/>
+<text x="1339.0" y="564.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#1E40AF" xml:space="preserve">IN</text>
+<text x="1372.0" y="564.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Citation result + NLI results + NumericCheck + table rows</text>
+<rect x="1316" y="583.0" width="46" height="20" rx="10" fill="#F1F5F9"/>
+<text x="1339.0" y="597.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#334155" xml:space="preserve">DO</text>
+<text x="1372.0" y="597.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• Entailment ≥ 0.5 in any cited chunk: SUPPORTED, score = entailment</text>
+<text x="1372.0" y="616.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• … but numbers mismatch or a section contradicts (≥ 0.9): NEUTRAL</text>
+<text x="1372.0" y="634.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• Table-row check: exactly one matching row grants SUPPORTED 0.9</text>
+<text x="1372.0" y="653.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• Else contradiction ≥ 0.5: REFUTED (policy sentence shown)</text>
+<text x="1372.0" y="671.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• Otherwise: NEUTRAL</text>
+<rect x="1316" y="686.5" width="46" height="20" rx="10" fill="#DCFCE7"/>
+<text x="1339.0" y="701.0" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#15803D" xml:space="preserve">OUT</text>
+<text x="1372.0" y="701.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">ClaimVerdict: status, score, evidence, check details, explanation</text>
+<rect x="1316" y="719.5" width="46" height="20" rx="10" fill="#F3E8FF"/>
+<text x="1339.0" y="734.0" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#6B21A8" xml:space="preserve">NEXT</text>
+<text x="1372.0" y="734.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">All verdicts go to the relevance gate</text>
+<rect x="24" y="804.5" width="1872" height="332.5" rx="16" fill="#94A3B8" fill-opacity="0.10" stroke="#94A3B8" stroke-opacity="0.55" stroke-width="1.5"/>
+<rect x="1479.0" y="812.5" width="401.0" height="26" rx="13" fill="#15803D"/>
+<text x="1679.5" y="830.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="13" font-weight="700" fill="#FFFFFF" letter-spacing="0.5" xml:space="preserve">RELEVANCE + DECIDE · relevance.py, abstain.py, pipeline.py</text>
+<rect x="40" y="844.5" width="560" height="276.5" rx="12" fill="#FFFFFF" stroke="#15803D" stroke-width="2.5"/>
+<path d="M40,856.5 a12,12 0 0 1 12,-12 h536 a12,12 0 0 1 12,12 v48 h-560 z" fill="#15803D"/>
+<text x="56.0" y="870.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="18.5" font-weight="700" fill="#FFFFFF" xml:space="preserve">7 Relevance gate</text>
+<text x="56.0" y="892.5" font-family="Consolas, 'Cascadia Mono', monospace" font-size="13.5" fill="#E2E8F0" xml:space="preserve">verify/relevance.py · assess_relevance()</text>
+<rect x="52" y="918.5" width="46" height="20" rx="10" fill="#DBEAFE"/>
+<text x="75.0" y="933.0" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#1E40AF" xml:space="preserve">IN</text>
+<text x="108.0" y="933.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Question + SUPPORTED claims</text>
+<rect x="52" y="951.5" width="46" height="20" rx="10" fill="#F1F5F9"/>
+<text x="75.0" y="966.0" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#334155" xml:space="preserve">DO</text>
+<text x="108.0" y="966.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• Cosine similarity question ↔ claim (bge): best ≥ 0.85 on topic, &lt; 0.55 off</text>
+<text x="120.0" y="984.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">topic</text>
+<text x="108.0" y="1003.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• In between: Qwen asked once, yes/no (JSON): does a claim answer the</text>
+<text x="120.0" y="1021.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">question?</text>
+<text x="108.0" y="1040.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• Judge fails: similarity ≥ 0.60 decides, and the answer is flagged</text>
+<rect x="52" y="1055.0" width="46" height="20" rx="10" fill="#DCFCE7"/>
+<text x="75.0" y="1069.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#15803D" xml:space="preserve">OUT</text>
+<text x="108.0" y="1069.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Each claim marked relevant / not relevant</text>
+<rect x="52" y="1088.0" width="46" height="20" rx="10" fill="#F3E8FF"/>
+<text x="75.0" y="1102.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#6B21A8" xml:space="preserve">NEXT</text>
+<text x="108.0" y="1102.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Verdicts passed to decide()</text>
+<path d="M604.0,982.8 L654.0,982.8" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#arrow)"/>
+<rect x="660" y="844.5" width="860" height="276.5" rx="12" fill="#FFFFFF" stroke="#15803D" stroke-width="2.5"/>
+<path d="M660,856.5 a12,12 0 0 1 12,-12 h836 a12,12 0 0 1 12,12 v48 h-860 z" fill="#15803D"/>
+<text x="676.0" y="870.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="18.5" font-weight="700" fill="#FFFFFF" xml:space="preserve">8 Final answer handling</text>
+<text x="676.0" y="892.5" font-family="Consolas, 'Cascadia Mono', monospace" font-size="13.5" fill="#E2E8F0" xml:space="preserve">abstain.py · decide() → should_keep() · pipeline.py · answer_question()</text>
+<rect x="672" y="918.5" width="46" height="20" rx="10" fill="#DBEAFE"/>
+<text x="695.0" y="933.0" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#1E40AF" xml:space="preserve">IN</text>
+<text x="728.0" y="933.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">All ClaimVerdicts + retrieved passages + 'fabricated' list</text>
+<rect x="672" y="951.5" width="46" height="20" rx="10" fill="#F1F5F9"/>
+<text x="695.0" y="966.0" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#334155" xml:space="preserve">DO</text>
+<text x="728.0" y="966.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• Abstain if no passages were retrieved, or the model produced no claims</text>
+<text x="728.0" y="984.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• Keep claims that are SUPPORTED, score ≥ 0.5 and relevant; all others move to 'removed' and are shown with their</text>
+<text x="740.0" y="1003.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">reason. No claim is rewritten</text>
+<text x="728.0" y="1021.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• Abstain if no claim is kept; the reason says contradicted, unverified or not in the policies</text>
+<rect x="672" y="1036.5" width="46" height="20" rx="10" fill="#DCFCE7"/>
+<text x="695.0" y="1051.0" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#15803D" xml:space="preserve">OUT</text>
+<text x="728.0" y="1051.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Answer: claims kept, claims removed, abstained, reason, per-stage timings, config fingerprint</text>
+<rect x="672" y="1069.5" width="46" height="20" rx="10" fill="#F3E8FF"/>
+<text x="695.0" y="1084.0" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#6B21A8" xml:space="preserve">NEXT</text>
+<text x="728.0" y="1084.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Shown in the Streamlit app (app.py) and scripts/ask.py</text>
+<path d="M1524.0,982.8 L1574.0,982.8" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#arrow)"/>
+<rect x="1580" y="921.75" width="300" height="122" rx="22" fill="#15803D"/>
+<text x="1730.0" y="955.8" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="19" font-weight="700" fill="#FFFFFF" xml:space="preserve">Answer object</text>
+<text x="1730.0" y="981.8" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="15.5" fill="#FFFFFF" xml:space="preserve">kept claims + citations,</text>
+<text x="1730.0" y="1003.8" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="15.5" fill="#FFFFFF" xml:space="preserve">removed claims + reasons,</text>
+<text x="1730.0" y="1025.8" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="15.5" fill="#FFFFFF" xml:space="preserve">or an abstention</text>
+<path d="M1627.0,384.0 L1627.0,418.0 L326.0,418.0 L326.0,472.0" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#arrow)"/>
+<rect x="833.9" y="405.0" width="285.2" height="26" rx="13" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.2"/><text x="976.5" y="423.0" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#1E293B" xml:space="preserve">each claim + its cited evidence chunks</text>
+<path d="M1590.0,752.5 L1590.0,786.5 L320.0,786.5 L320.0,840.5" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#arrow)"/>
+<rect x="821.6" y="773.5" width="266.7" height="26" rx="13" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.2"/><text x="955.0" y="791.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#1E293B" xml:space="preserve">list of ClaimVerdicts (one per claim)</text></g></svg>

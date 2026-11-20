@@ -1,0 +1,167 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080"><defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#475569"/></marker></defs><g transform="translate(0.0,4.2) scale(1.0000)"><rect x="24" y="12" width="1872" height="332.5" rx="16" fill="#94A3B8" fill-opacity="0.10" stroke="#94A3B8" stroke-opacity="0.55" stroke-width="1.5"/>
+<rect x="1681.0" y="20" width="199.0" height="26" rx="13" fill="#1E3A8A"/>
+<text x="1780.5" y="38.0" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="13" font-weight="700" fill="#FFFFFF" letter-spacing="0.5" xml:space="preserve">OFFLINE · scripts/ingest.py</text>
+<rect x="40" y="52" width="572" height="276.5" rx="12" fill="#FFFFFF" stroke="#1E3A8A" stroke-width="2.5"/>
+<path d="M40,64 a12,12 0 0 1 12,-12 h548 a12,12 0 0 1 12,12 v48 h-572 z" fill="#1E3A8A"/>
+<text x="56.0" y="78.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="18.5" font-weight="700" fill="#FFFFFF" xml:space="preserve">1 Document fetching</text>
+<text x="56.0" y="100.0" font-family="Consolas, 'Cascadia Mono', monospace" font-size="13.5" fill="#E2E8F0" xml:space="preserve">ingest/fetch.py · fetch_all() → fetch_one()</text>
+<rect x="52" y="126" width="46" height="20" rx="10" fill="#DBEAFE"/>
+<text x="75.0" y="140.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#1E40AF" xml:space="preserve">IN</text>
+<text x="108.0" y="140.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">data/manifest.yaml: 7 SRM policy URLs (4 PDF, 3 HTML) with key, type, title</text>
+<rect x="52" y="159" width="46" height="20" rx="10" fill="#F1F5F9"/>
+<text x="75.0" y="173.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#334155" xml:space="preserve">DO</text>
+<text x="108.0" y="173.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• HTTP GET each URL (requests)</text>
+<text x="108.0" y="192.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• SHA-256 checksum; flag a document that changed since the last fetch</text>
+<rect x="52" y="207.0" width="46" height="20" rx="10" fill="#DCFCE7"/>
+<text x="75.0" y="221.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#15803D" xml:space="preserve">OUT</text>
+<text x="108.0" y="221.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Raw files data/raw/srm/{type}.pdf|html + checksums.json</text>
+<rect x="52" y="240.0" width="46" height="20" rx="10" fill="#F3E8FF"/>
+<text x="75.0" y="254.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#6B21A8" xml:space="preserve">NEXT</text>
+<text x="108.0" y="254.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">scripts/ingest.py reads each raw file back as bytes + its format</text>
+<path d="M616.0,190.2 L666.0,190.2" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#arrow)"/>
+<rect x="672" y="52" width="572" height="276.5" rx="12" fill="#FFFFFF" stroke="#1E3A8A" stroke-width="2.5"/>
+<path d="M672,64 a12,12 0 0 1 12,-12 h548 a12,12 0 0 1 12,12 v48 h-572 z" fill="#1E3A8A"/>
+<text x="688.0" y="78.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="18.5" font-weight="700" fill="#FFFFFF" xml:space="preserve">2 Text extraction</text>
+<text x="688.0" y="100.0" font-family="Consolas, 'Cascadia Mono', monospace" font-size="13.5" fill="#E2E8F0" xml:space="preserve">ingest/extract.py · extract() → extract_html() / extract_pdf()</text>
+<rect x="684" y="126" width="46" height="20" rx="10" fill="#DBEAFE"/>
+<text x="707.0" y="140.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#1E40AF" xml:space="preserve">IN</text>
+<text x="740.0" y="140.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Raw bytes + format</text>
+<rect x="684" y="159" width="46" height="20" rx="10" fill="#F1F5F9"/>
+<text x="707.0" y="173.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#334155" xml:space="preserve">DO</text>
+<text x="740.0" y="173.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• HTML: BeautifulSoup; remove script/nav/footer, SRM menus and the</text>
+<text x="752.0" y="192.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">end-of-page link block</text>
+<text x="740.0" y="210.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• HTML tables: one line per row, naming the table and its columns</text>
+<text x="740.0" y="229.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• PDF: PyMuPDF text, top to bottom; tables read row by row</text>
+<text x="752.0" y="247.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">(merged cells filled); headers/footers dropped at page edges</text>
+<rect x="684" y="262.5" width="46" height="20" rx="10" fill="#DCFCE7"/>
+<text x="707.0" y="277.0" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#15803D" xml:space="preserve">OUT</text>
+<text x="740.0" y="277.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Clean plain text per document (also saved as .txt)</text>
+<rect x="684" y="295.5" width="46" height="20" rx="10" fill="#F3E8FF"/>
+<text x="707.0" y="310.0" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#6B21A8" xml:space="preserve">NEXT</text>
+<text x="740.0" y="310.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Text + manifest metadata passed to build_document()</text>
+<path d="M1248.0,190.2 L1298.0,190.2" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#arrow)"/>
+<rect x="1304" y="52" width="572" height="276.5" rx="12" fill="#FFFFFF" stroke="#1E3A8A" stroke-width="2.5"/>
+<path d="M1304,64 a12,12 0 0 1 12,-12 h548 a12,12 0 0 1 12,12 v48 h-572 z" fill="#1E3A8A"/>
+<text x="1320.0" y="78.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="18.5" font-weight="700" fill="#FFFFFF" xml:space="preserve">3 Normalization and sections</text>
+<text x="1320.0" y="100.0" font-family="Consolas, 'Cascadia Mono', monospace" font-size="13.5" fill="#E2E8F0" xml:space="preserve">ingest/normalize.py · build_document() → split_into_sections()</text>
+<rect x="1316" y="126" width="46" height="20" rx="10" fill="#DBEAFE"/>
+<text x="1339.0" y="140.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#1E40AF" xml:space="preserve">IN</text>
+<text x="1372.0" y="140.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Plain text + university, policy type, title, URL, date</text>
+<rect x="1316" y="159" width="46" height="20" rx="10" fill="#F1F5F9"/>
+<text x="1339.0" y="173.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#334155" xml:space="preserve">DO</text>
+<text x="1372.0" y="173.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• Lift headings buried mid-line by PDF extraction</text>
+<text x="1372.0" y="192.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• Detect numbered ("7.3 Minimum Attendance"), ALL-CAPS and Roman ("II.</text>
+<text x="1384.0" y="210.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">ADMISSION ...") headings; a table row is never a heading</text>
+<text x="1372.0" y="229.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• Text between two headings becomes a Section</text>
+<rect x="1316" y="244.0" width="46" height="20" rx="10" fill="#DCFCE7"/>
+<text x="1339.0" y="258.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#15803D" xml:space="preserve">OUT</text>
+<text x="1372.0" y="258.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Validated Document with Sections (Pydantic): 7 documents, 225 sections</text>
+<rect x="1316" y="277.0" width="46" height="20" rx="10" fill="#F3E8FF"/>
+<text x="1339.0" y="291.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#6B21A8" xml:space="preserve">NEXT</text>
+<text x="1372.0" y="291.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Saved as data/processed/srm/*.json for the index build</text>
+<rect x="24" y="380.5" width="1872" height="329.0" rx="16" fill="#94A3B8" fill-opacity="0.10" stroke="#94A3B8" stroke-opacity="0.55" stroke-width="1.5"/>
+<rect x="1647.8" y="388.5" width="232.2" height="26" rx="13" fill="#0F766E"/>
+<text x="1763.9" y="406.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="13" font-weight="700" fill="#FFFFFF" letter-spacing="0.5" xml:space="preserve">OFFLINE · scripts/build_index.py</text>
+<rect x="40" y="420.5" width="572" height="273.0" rx="12" fill="#FFFFFF" stroke="#0F766E" stroke-width="2.5"/>
+<path d="M40,432.5 a12,12 0 0 1 12,-12 h548 a12,12 0 0 1 12,12 v48 h-572 z" fill="#0F766E"/>
+<text x="56.0" y="446.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="18.5" font-weight="700" fill="#FFFFFF" xml:space="preserve">4 Chunking</text>
+<text x="56.0" y="468.5" font-family="Consolas, 'Cascadia Mono', monospace" font-size="13.5" fill="#E2E8F0" xml:space="preserve">indexing/chunk.py · chunk_document()</text>
+<rect x="52" y="494.5" width="46" height="20" rx="10" fill="#DBEAFE"/>
+<text x="75.0" y="509.0" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#1E40AF" xml:space="preserve">IN</text>
+<text x="108.0" y="509.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Document JSON (loaded by scripts/build_index.py)</text>
+<rect x="52" y="527.5" width="46" height="20" rx="10" fill="#F1F5F9"/>
+<text x="75.0" y="542.0" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#334155" xml:space="preserve">DO</text>
+<text x="108.0" y="542.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• Unique citation ID per section: Document.citations()</text>
+<text x="108.0" y="560.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• Drop contents-page noise: &lt; 3 real words, or a short title / unfinished</text>
+<text x="120.0" y="579.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">fragment (222 sections kept)</text>
+<text x="108.0" y="597.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• Split long sections: ≤ 1,800 chars, 150-char overlap, never across sections</text>
+<rect x="52" y="612.5" width="46" height="20" rx="10" fill="#DCFCE7"/>
+<text x="75.0" y="627.0" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#15803D" xml:space="preserve">OUT</text>
+<text x="108.0" y="627.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">307 chunks: text + citation_id (e.g.</text>
+<text x="108.0" y="645.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">srm/attendance/7.3-minimum_attendance) + metadata</text>
+<rect x="52" y="660.5" width="46" height="20" rx="10" fill="#F3E8FF"/>
+<text x="75.0" y="675.0" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#6B21A8" xml:space="preserve">NEXT</text>
+<text x="108.0" y="675.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">List of Chunks handed to VectorStore.build()</text>
+<path d="M616.0,557.0 L666.0,557.0" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#arrow)"/>
+<rect x="672" y="420.5" width="572" height="273.0" rx="12" fill="#FFFFFF" stroke="#0F766E" stroke-width="2.5"/>
+<path d="M672,432.5 a12,12 0 0 1 12,-12 h548 a12,12 0 0 1 12,12 v48 h-572 z" fill="#0F766E"/>
+<text x="688.0" y="446.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="18.5" font-weight="700" fill="#FFFFFF" xml:space="preserve">5 Embedding generation</text>
+<text x="688.0" y="468.5" font-family="Consolas, 'Cascadia Mono', monospace" font-size="13.5" fill="#E2E8F0" xml:space="preserve">indexing/store.py · embedding_text() + Embedder.encode_documents()</text>
+<rect x="684" y="494.5" width="46" height="20" rx="10" fill="#DBEAFE"/>
+<text x="707.0" y="509.0" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#1E40AF" xml:space="preserve">IN</text>
+<text x="740.0" y="509.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Chunks</text>
+<rect x="684" y="527.5" width="46" height="20" rx="10" fill="#F1F5F9"/>
+<text x="707.0" y="542.0" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#334155" xml:space="preserve">DO</text>
+<text x="740.0" y="542.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• Prefix "university | policy | section path" for search context</text>
+<text x="740.0" y="560.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• BAAI/bge-base-en-v1.5 on CPU, batch 32, normalized vectors</text>
+<rect x="684" y="575.5" width="46" height="20" rx="10" fill="#DCFCE7"/>
+<text x="707.0" y="590.0" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#15803D" xml:space="preserve">OUT</text>
+<text x="740.0" y="590.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">One 768-dimension vector per chunk</text>
+<rect x="684" y="608.5" width="46" height="20" rx="10" fill="#F3E8FF"/>
+<text x="707.0" y="623.0" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#6B21A8" xml:space="preserve">NEXT</text>
+<text x="740.0" y="623.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Vectors stored next to the chunk's original text and metadata</text>
+<path d="M1248.0,557.0 L1298.0,557.0" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#arrow)"/>
+<rect x="1304" y="420.5" width="572" height="273.0" rx="12" fill="#FFFFFF" stroke="#0F766E" stroke-width="2.5"/>
+<path d="M1304,432.5 a12,12 0 0 1 12,-12 h548 a12,12 0 0 1 12,12 v48 h-572 z" fill="#0F766E"/>
+<text x="1320.0" y="446.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="18.5" font-weight="700" fill="#FFFFFF" xml:space="preserve">6 Chroma vector database</text>
+<text x="1320.0" y="468.5" font-family="Consolas, 'Cascadia Mono', monospace" font-size="13.5" fill="#E2E8F0" xml:space="preserve">indexing/store.py · VectorStore.build()</text>
+<rect x="1316" y="494.5" width="46" height="20" rx="10" fill="#DBEAFE"/>
+<text x="1339.0" y="509.0" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#1E40AF" xml:space="preserve">IN</text>
+<text x="1372.0" y="509.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Vectors + original chunk text (no prefix) + metadata</text>
+<rect x="1316" y="527.5" width="46" height="20" rx="10" fill="#F1F5F9"/>
+<text x="1339.0" y="542.0" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#334155" xml:space="preserve">DO</text>
+<text x="1372.0" y="542.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• Replace collection "policies" (cosine HNSW index)</text>
+<text x="1372.0" y="560.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• Metadata: citation_id, university, policy_type, section path, URL</text>
+<text x="1372.0" y="579.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• Write index_manifest.json: model name, dimension, counts</text>
+<rect x="1316" y="594.0" width="46" height="20" rx="10" fill="#DCFCE7"/>
+<text x="1339.0" y="608.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#15803D" xml:space="preserve">OUT</text>
+<text x="1372.0" y="608.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Persistent index in data/index/ (307 chunks)</text>
+<rect x="1316" y="627.0" width="46" height="20" rx="10" fill="#F3E8FF"/>
+<text x="1339.0" y="641.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#6B21A8" xml:space="preserve">NEXT</text>
+<text x="1372.0" y="641.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Searched at question time; a BM25 keyword index is built from the same</text>
+<text x="1372.0" y="660.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">chunks</text>
+<rect x="24" y="745.5" width="1872" height="314.0" rx="16" fill="#94A3B8" fill-opacity="0.10" stroke="#94A3B8" stroke-opacity="0.55" stroke-width="1.5"/>
+<rect x="1676.2" y="753.5" width="203.8" height="26" rx="13" fill="#6D28D9"/>
+<text x="1778.1" y="771.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="13" font-weight="700" fill="#FFFFFF" letter-spacing="0.5" xml:space="preserve">ONLINE · once per question</text>
+<rect x="40" y="785.5" width="470" height="258.0" rx="12" fill="#FFFFFF" stroke="#6D28D9" stroke-width="2.5"/>
+<path d="M40,797.5 a12,12 0 0 1 12,-12 h446 a12,12 0 0 1 12,12 v48 h-470 z" fill="#6D28D9"/>
+<text x="56.0" y="811.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="18.5" font-weight="700" fill="#FFFFFF" xml:space="preserve">User question</text>
+<text x="56.0" y="833.5" font-family="Consolas, 'Cascadia Mono', monospace" font-size="12.5" fill="#E2E8F0" xml:space="preserve">app.py (Streamlit) / scripts/ask.py → pipeline.answer_question()</text>
+<rect x="52" y="859.5" width="46" height="20" rx="10" fill="#DBEAFE"/>
+<text x="75.0" y="874.0" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#1E40AF" xml:space="preserve">IN</text>
+<text x="108.0" y="874.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Question text, optional policy filter</text>
+<rect x="52" y="892.5" width="46" height="20" rx="10" fill="#DCFCE7"/>
+<text x="75.0" y="907.0" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#15803D" xml:space="preserve">OUT</text>
+<text x="108.0" y="907.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Question string + filters</text>
+<rect x="52" y="925.5" width="46" height="20" rx="10" fill="#F3E8FF"/>
+<text x="75.0" y="940.0" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#6B21A8" xml:space="preserve">NEXT</text>
+<text x="108.0" y="940.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Passed to retrieve()</text>
+<path d="M514.0,914.5 L564.0,914.5" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#arrow)"/>
+<rect x="570" y="785.5" width="940" height="258.0" rx="12" fill="#FFFFFF" stroke="#6D28D9" stroke-width="2.5"/>
+<path d="M570,797.5 a12,12 0 0 1 12,-12 h916 a12,12 0 0 1 12,12 v48 h-940 z" fill="#6D28D9"/>
+<text x="586.0" y="811.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="18.5" font-weight="700" fill="#FFFFFF" xml:space="preserve">7 Question processing and evidence retrieval</text>
+<text x="586.0" y="833.5" font-family="Consolas, 'Cascadia Mono', monospace" font-size="13.5" fill="#E2E8F0" xml:space="preserve">retrieve.py · retrieve() → store.search() + bm25_index().search() → reciprocal_rank_fusion() → diversify()</text>
+<rect x="582" y="859.5" width="46" height="20" rx="10" fill="#DBEAFE"/>
+<text x="605.0" y="874.0" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#1E40AF" xml:space="preserve">IN</text>
+<text x="638.0" y="874.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Question + filters + index from step 6</text>
+<rect x="582" y="892.5" width="46" height="20" rx="10" fill="#F1F5F9"/>
+<text x="605.0" y="907.0" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#334155" xml:space="preserve">DO</text>
+<text x="638.0" y="907.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• check_ready(): stop if the index was built with a different embedding model</text>
+<text x="638.0" y="925.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• Hybrid search: embedding search (bge query prefix, cosine) + BM25 keyword search, up to 50 candidates each, same filters</text>
+<text x="638.0" y="944.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• Merge the two rankings by Reciprocal Rank Fusion (k = 60); score shown = cosine similarity</text>
+<text x="638.0" y="962.5" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">• diversify(): at most 2 chunks per section, keep top 6</text>
+<rect x="582" y="977.5" width="46" height="20" rx="10" fill="#DCFCE7"/>
+<text x="605.0" y="992.0" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#15803D" xml:space="preserve">OUT</text>
+<text x="638.0" y="992.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">6 RetrievedChunk objects: chunk text, citation_id, score, rank</text>
+<rect x="582" y="1010.5" width="46" height="20" rx="10" fill="#F3E8FF"/>
+<text x="605.0" y="1025.0" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#6B21A8" xml:space="preserve">NEXT</text>
+<text x="638.0" y="1025.0" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#0F172A" xml:space="preserve">Question + 6 passages go to claim generation (next diagram)</text>
+<path d="M1514.0,914.5 L1564.0,914.5" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#arrow)"/>
+<rect x="1570" y="864.5" width="300" height="100" rx="22" fill="#6D28D9"/>
+<text x="1720.0" y="898.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="19" font-weight="700" fill="#FFFFFF" xml:space="preserve">Next: generation</text>
+<text x="1720.0" y="924.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="15.5" fill="#FFFFFF" xml:space="preserve">question + 6</text>
+<text x="1720.0" y="946.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="15.5" fill="#FFFFFF" xml:space="preserve">evidence passages</text>
+<path d="M1590.0,328.5 L1590.0,362.5 L326.0,362.5 L326.0,416.5" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#arrow)"/>
+<rect x="797.8" y="349.5" width="320.5" height="26" rx="13" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.2"/><text x="958.0" y="367.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#1E293B" xml:space="preserve">Document JSON files · data/processed/srm/</text>
+<path d="M1590.0,693.5 L1590.0,727.5 L1040.0,727.5 L1040.0,781.5" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#arrow)"/>
+<rect x="1190.5" y="714.5" width="249.0" height="26" rx="13" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.2"/><text x="1315.0" y="732.5" text-anchor="middle" font-family="Segoe UI, Calibri, Arial, sans-serif" font-size="14.5" fill="#1E293B" xml:space="preserve">index: vectors + text + metadata</text></g></svg>

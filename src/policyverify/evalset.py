@@ -68,22 +68,6 @@ class TrapCategory(StrEnum):
     # correct the premise rather than elaborate on it.
     FALSE_PREMISE = "false_premise"
 
-    # A situation described in the student's own words ("I have 72%
-    # attendance because I was in hospital - can I sit the exam?"). The
-    # answer is not a quoted figure: the system has to find the rule that
-    # governs the situation and apply it. These are the questions real users
-    # ask, and the ones a keyword-shaped evaluation set misses. Kept in
-    # eval/scenarios.jsonl.
-    SCENARIO = "scenario"
-
-    # The per-document sets (eval/sections/*.jsonl) also ask every section
-    # two plainer ways, so a section that cannot be answered at all shows up:
-    # DIRECT asks in the policy's own terms ("What is verbatim plagiarism?");
-    # INDIRECT asks for the same rule in other words ("If I cite the source
-    # but leave out quotation marks, is it still plagiarism?").
-    DIRECT = "direct"
-    INDIRECT = "indirect"
-
 
 class Split(StrEnum):
     TUNING = "tuning"
