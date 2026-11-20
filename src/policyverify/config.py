@@ -322,6 +322,22 @@ class RelevanceConfig(BaseModel):
     # False = gate off: every verified claim counts as relevant, exactly as
     # before the gate existed.
     enabled: bool = True
+    # Who decides whether a claim answers the question:
+    #   "llm"           - similarity, then one yes/no call to the language
+    #                     model for the borderline band (the original gate).
+    #   "cross_encoder" - a small query/passage relevance model scores each
+    #                     claim; no language-model call.
+    # Measured 2026-11-20 on 27 labelled cases (18 real answers, 9 true but
+    # off-topic traps): qwen2.5:3b as the judge kept only 6-7 of the 18
+    # answers with every prompt and output format tried - it reads a "no"
+    # ruling ("fees will not be refunded") as "no answer". The cross-encoder
+    # kept 18/18 and rejected 7/9 traps at a threshold of 0.3. The LLM judge
+    # was measured reliable on qwen3:4b (see verify/relevance.py).
+    judge: str = "cross_encoder"
+    cross_encoder_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    cross_encoder_device: str = "cpu"
+    # Probability (0-1) at or above which a claim answers the question.
+    cross_encoder_threshold: float = 0.3
     # Cosine similarity (question with the retrieval query prefix, against the
     # claim text) at or above which the answer is on topic without asking the
     # model. Deliberately high: on the replayed answers, off-topic claims that

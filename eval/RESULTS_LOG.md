@@ -44,3 +44,32 @@ is run once at the end, for reporting.
 - Retrieval is not the bottleneck: the expected section is in the top 6
   for 48 of 51 answerable adversarial questions and 21 of 21 scenario
   questions.
+
+## Relevance judge comparison (2026-11-20)
+
+27 hand-labelled cases: the 14 judge calls logged in run 0 (all real
+answers), 4 more real answers (false-premise corrections, scenarios), and 9
+true-but-off-topic traps written from the corpus (e.g. "Which plagiarism
+software?" -> "SRM will use the best tools / software to detect
+plagiarism"). Cases: a scratch file built from data/logs/prompts/.
+
+| Judge | Answers kept (of 18) | Traps rejected (of 9) | Total (of 27) |
+|---|---|---|---|
+| qwen2.5:3b, original prompt, JSON schema | 6 | 9 | 15 |
+| ... same prompt, plain JSON mode | 6 | 9 | 15 |
+| ... same prompt, plain-text YES/NO | 6 | 9 | 15 |
+| ... plus "a 'no' is an answer too" | 1 | 9 | 10 |
+| ... one statement at a time | 6 | 9 | 15 |
+| ... "copy the words that answer it" | 6 | 9 | 15 |
+| **cross-encoder `ms-marco-MiniLM-L-6-v2`, p >= 0.3** | **18** | **7** | **25** |
+| cross-encoder after an LLM rewrite of the question | 17 | 7 | 24 |
+
+The 3B model's failures do not depend on wording or output format: it
+reads a "no" ruling ("Fees once paid will not be refunded") as "not an
+answer". The cross-encoder's two misses are both questions asking for a
+NAME ("which software", "who is the current VC") answered by a claim that
+mentions the thing. It also failed on a scenario phrased as a count with a
+student's word for the outcome ("74 classes out of 100 ... detained",
+p = 0.000); giving the judge a normalised copy - the count as a percentage,
+"detained" replaced by the examination policy's own definition - raised it
+to 0.976 (`judge_views` in verify/relevance.py).

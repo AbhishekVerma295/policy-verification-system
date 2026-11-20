@@ -32,10 +32,12 @@ from policyverify.schema import (
     RetrievedChunk,
     Timings,
 )
+from policyverify.situation import apply_to_situation
 from policyverify.verify import verify_claims
 from policyverify.verify.relevance import (
     RelevanceReport,
     assess_relevance,
+    cross_encoder_for,
     similarity_for_store,
 )
 
@@ -59,10 +61,20 @@ def _default_relevance(store, llm: LLMBackend | None, config: Config) -> Relevan
     judge from the same language model that wrote the claims."""
     similarity = similarity_for_store(store)
     judge = llm or get_llm(config)
+    cfg = config.relevance
+    # Like the similarity, the cross-encoder is a model that needs the real
+    # environment: a stand-in store with no embedder (the tests) keeps the
+    # original gate, so nothing here downloads or loads a model for it.
+    cross_encoder = (
+        cross_encoder_for(cfg.cross_encoder_model, cfg.cross_encoder_device)
+        if cfg.judge == "cross_encoder" and similarity is not None
+        else None
+    )
 
     def gate(question: str, verdicts: list[ClaimVerdict]) -> RelevanceReport:
         return assess_relevance(
-            question, verdicts, llm=judge, similarity=similarity, config=config
+            question, verdicts, llm=judge, similarity=similarity, config=config,
+            cross_encoder=cross_encoder,
         )
 
     return gate
@@ -155,6 +167,14 @@ def answer_question(
         timings=timings,
         config_fingerprint=config.fingerprint(),
     )
+
+    # The asker's figure against a verified threshold, worked out in code.
+    # Only from KEPT claims: a rule that failed verification decides nothing.
+    if not answer.abstained:
+        note = apply_to_situation(question, answer.claims_kept)
+        if note is not None:
+            answer.situation = note.message
+            answer.situation_citation = note.citation
 
     # A fabricated citation is a finding about the model, so it is surfaced in
     # the answer rather than left only in the logs.

@@ -481,6 +481,9 @@ class CheckResults(BaseModel):
     # Cosine similarity of the claim to the question (the same measure the
     # retrieval step uses), when it could be computed.
     relevance_similarity: float | None = None
+    # The cross-encoder's probability that the claim answers the question,
+    # when that judge decided (relevance.judge = "cross_encoder").
+    relevance_score: float | None = None
     # How the decision was reached: "similarity" (clear-cut either way, no
     # model asked), "judge" (borderline, the language model decided), or
     # "similarity_fallback" (the model could not be reached or gave an
@@ -546,6 +549,12 @@ class Answer(BaseModel):
     # this question (unreachable, or an unusable reply) and the similarity
     # alone decided. Recorded so a fallback is never silent.
     relevance_judge_failed: bool = False
+    # The asker's own figure set against a verified threshold ("Your figure:
+    # 74 classes out of 100 = 74%, which is below the minimum of 75%"),
+    # computed by situation.py, never by the model. None when the question
+    # gives no figure or no single verified threshold applies.
+    situation: str | None = None
+    situation_citation: str | None = None
 
     timings: Timings = Field(default_factory=Timings)
     # Which model and settings produced this, so a saved run can be understood

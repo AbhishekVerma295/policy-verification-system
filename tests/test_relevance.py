@@ -309,3 +309,76 @@ def test_store_with_an_embedder_gives_a_similarity():
         embedder = FakeEmbedder()
 
     assert isinstance(similarity_for_store(Store()), EmbedderSimilarity)
+
+
+# ---------------------------------------------------------------------------
+# The cross-encoder judge (relevance.judge = "cross_encoder")
+# ---------------------------------------------------------------------------
+
+
+class FakeCrossEncoder:
+    """Returns a fixed probability per claim text."""
+
+    def __init__(self, probs):
+        self.probs = probs
+
+    def scores(self, question, claims):
+        return [self.probs[c] for c in claims]
+
+
+class BrokenCrossEncoder:
+    def scores(self, question, claims):
+        raise RuntimeError("model not downloaded")
+
+
+def test_cross_encoder_scores_each_claim_on_its_own_and_asks_no_model():
+    """Measured: the 3B judge read 'fees will not be refunded' as no answer."""
+    answer = _verdict("Fees once paid will not be refunded normally.")
+    tangent = _verdict("All visitors must sign the visitor's book.")
+    llm = FakeLLM([json.dumps({"answered": False})])
+    report = assess_relevance(
+        "Are hostel fees refundable?", [answer, tangent], llm=llm,
+        similarity=FakeSimilarity([0.6, 0.6]), config=load_config(),
+        cross_encoder=FakeCrossEncoder({answer.claim.text: 0.99, tangent.claim.text: 0.01}),
+    )
+    kept, dropped = report.verdicts
+    assert kept.checks.relevant is True and kept.checks.relevance_score == 0.99
+    assert kept.checks.relevance_source == "cross_encoder"
+    assert dropped.checks.relevant is False
+    assert llm.prompts == [], "the language model is not asked"
+
+
+def test_a_failing_cross_encoder_falls_back_to_the_gate_and_says_so():
+    llm = FakeLLM([json.dumps({"answered": True})])
+    report = assess_relevance(
+        "q", [_verdict()], llm=llm, similarity=FakeSimilarity([0.7]),
+        config=load_config(), cross_encoder=BrokenCrossEncoder(),
+    )
+    assert report.judge_failed
+    assert report.verdicts[0].checks.relevance_source == "judge"
+
+
+def test_judge_views_restate_counts_and_use_the_corpus_definition_of_detained():
+    """Measured: the 74-of-100 'detained' question scored 0.000 as asked and
+    0.976 in the normalised form."""
+    from policyverify.verify.relevance import judge_views
+
+    views = judge_views("i have attended 74 classes out of 100, will i get detained?")
+    assert views[0] == "i have attended 74 classes out of 100, will i get detained?"
+    assert views[1] == "i have 74% attendance, will i not be allowed to write the examinations?"
+    assert judge_views("Are male visitors allowed in female hostels?") == [
+        "Are male visitors allowed in female hostels?"]
+
+
+def test_the_cross_encoder_takes_the_best_score_over_the_views():
+    from policyverify.verify.relevance import CrossEncoderRelevance
+
+    class _Model:
+        def predict(self, pairs, show_progress_bar=False):
+            # High only for the normalised wording.
+            return [5.0 if "not be allowed" in q else -5.0 for q, _ in pairs]
+
+    ce = CrossEncoderRelevance("unused")
+    ce._model = _Model()
+    [p] = ce.scores("i attended 74 classes out of 100, will i get detained?", ["claim"])
+    assert p > 0.99
