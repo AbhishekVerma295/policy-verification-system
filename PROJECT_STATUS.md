@@ -3,7 +3,10 @@
 Detailed current state of the Policy Verification System. Written as a handoff
 document: it states what exists, what was measured, and what is not built yet.
 
-**Last updated:** 2026-11-16, after the audit and the first six improvement
+**Last updated:** 2026-11-20 (section 0.0, sections 3 and 4.3). The work of
+19–20 November is **local and not committed**, because a teammate is
+developing a different approach in parallel and the better version will be
+kept. Before that: 2026-11-16, after the audit and the first six improvement
 tasks. **Section 0 below is the current state** and holds every measured
 result. Sections 1 onward were rewritten on 2026-11-16 to describe how the
 system works in the code today; they quote no results of their own, so where
@@ -19,7 +22,17 @@ it see [`CONCEPTS.md`](CONCEPTS.md). For the final results in paper form see
 
 Work on a laptop with no GPU, running `qwen2.5:3b`. Every number from this
 work is in [`eval/RESULTS_LOG.md`](eval/RESULTS_LOG.md), one row per change,
-all under the same fixed settings. Section 0 below describes `main` as of
+all under the same fixed settings.
+
+> **Merged with `main` on 2026-11-20.** `main`'s measured settings win where
+> they differ (section 0.0 below): 1800/150 chunks, section summaries OFF,
+> entity boost OFF, audience filter OFF, model `qwen3.5:9b`. The code for each
+> is still here, switched off in `config.yaml`. This branch's later work - the
+> cross-encoder relevance judge and re-ranking, written answers, list
+> questions, the situation check, the polarity check, number words, the
+> scenario and per-section question sets, `config.local.yaml`, the prompt log
+> and temperature 0.001 with a seed - is kept alongside `main`'s data audit,
+> table-row check and seventh document. Section 0 below describes `main` as of
 2026-11-16 and its numbers (qwen3:4b, GPU) are not comparable with these.
 
 | Area | Change | Where |
@@ -44,6 +57,60 @@ labels and paper data use.
 ---
 
 ## 0. Current state (2026-11-16)
+## 0. Current state (2026-11-16, with the 2026-11-20 update in 0.0)
+
+### 0.0 Update 2026-11-20 (local, not committed)
+
+Full story, with every decision: `STUDY_GUIDE.md` sections 10.15–10.22.
+
+**1. The teammate's retrieval changes were measured** (`aeea740`, `3434b4e`):
+section summaries, entity boost, audience filter and 800-character chunks.
+On the tuning split they lowered accuracy from 78.8% to 66.7–69.7% and raised
+hallucination from 3.0% to 6.1–9.1%. Switching one part off at a time showed
+the **section summaries** were the main cause (6–12 points). The code is kept
+but switched off in `config.yaml`, with 1800/150 chunks restored.
+
+**2. A data audit found, and the ingestion code now fixes:**
+
+- the PDF header filter deleting table data: 628 lines of the regulations, including grade points, attendance codes 9/8, class bands and every "%";
+- PDF tables read cell by cell, e.g. the warden emails;
+- web tables with merged cells left flat (EWS, Alumni, code-of-conduct Levels);
+- 20+ missed headings;
+- a PDF page read out of order;
+- the linked **Scholarship Categories PDF** (2025-26, amended), never ingested. It is now the 7th document, `srm/scholarship_categories`, beside the scholarship page; the one conflict ("IIT JEE rank up to 2000" vs the page's "20,000") is recorded in the manifest.
+
+**3. Labels:** 29 citations were remapped to renamed sections, each checked by
+hand with a dated note. `num-011` was corrected to code **9** (its old label
+had been written from the damaged text). Fingerprints were re-recorded.
+
+**4. Measured** (development numbers on tuning and the fresh 49; held-out sets
+not re-run):
+
+| | 16 Nov | Teammate's version | 20 Nov repaired |
+|---|---|---|---|
+| Tuning accuracy / hallucination | 78.8% / 3.0% | 69.7% / 6.1–9.1% | 75.8% / 3.0% |
+| Fresh accuracy / hallucination | 85.7–89.8% / 2.0% | 79.6% / 4.1% | 83.7% / 2.0% |
+| Checker on tuning claims (P / R / false-accept) | — | 96 / 100 / 5% | 100 / 100 / 0% |
+
+**Spot check of repaired areas:** 7 of 12 correct before step E.
+
+**5. Step E, table-aware checking** (`verify/table.py`): when the NLI model
+does not support a claim, a model-free check looks for the ONE table row
+holding the claim's numbers (exactly, or within a range such as 90% in "85 to
+94%"), most of its words, its names, and no word of another row. It grants
+support, never refutes, and never overrides a prose contradiction (switch:
+`verification.table_row_check`). Measured:
+
+- tuning unchanged at 75.8% / 3.0%;
+- claim checker still 100 / 100 / 0%, with all "right number, wrong row" claims refuted;
+- fresh 49 from 83.7% to **85.7%**;
+- spot check from 7 to **10 of 12** correct.
+
+Kept.
+
+**6. Default model** changed to `qwen3.5:9b`; `qwen3:4b` is the backup. On tuning: 72.7% / 0% hallucination / 7 of 7 unanswerable declined / 9 of 26 answerable declined, vs 75.8% / 3.0% / 6 of 7 / 4 of 26 for the 4B (STUDY_GUIDE 10.24).
+
+**7. Corpus now:** 7 documents, 225 sections (222 indexed), 307 chunks; 564 tests.
 
 ### 0.1 What happened
 
@@ -231,7 +298,7 @@ work, not how well.
 | Python | 3.12 in `.venv/` (`pyvenv.cfg` says 3.12.10); the ruff target is 3.12 |
 | GPU | RTX 4060 Laptop, 8 GB VRAM |
 | RAM | 16 GB |
-| Generation model | `qwen3:4b` via Ollama (local, GPU) |
+| Generation model | `qwen3.5:9b` via Ollama (local, GPU) since 2026-11-20; backup `qwen3:4b`, which produced every result before that date |
 | Embedding model | `BAAI/bge-base-en-v1.5`, 768-dim (CPU) |
 | NLI model | `MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli` (CPU, float32) |
 | Vector store | Chroma, persisted to `data/index/` |
@@ -256,25 +323,30 @@ code. Use 3.12, which is what the project is developed and linted on.
 
 ## 3. Corpus
 
-One institution, six documents, one per policy type. Counts below were taken
-on 2026-11-16 by reading `data/processed/srm/*.json` and running the chunker
-on it (no model needed).
+One institution, seven documents. Counts below were taken on 2026-11-20 by
+reading `data/processed/srm/*.json` and running the chunker on it (no model
+needed); the 2026-11-16 counts are in brackets.
 
-| Policy type | Source document | Format | Sections parsed | Chunks |
+| Document key (policy type) | Source document | Format | Sections parsed | Chunks |
 |---|---|---|---|---|
-| `attendance` | Academic Regulations 2021 (UG / Integrated PG) | PDF | 52 | 66 |
-| `examination` | Examination Policy | HTML | 59 | 88 |
-| `academic_integrity` | Plagiarism Policy (2017) | PDF | 9 | 11 |
-| `scholarship` | Scholarship Policy | HTML | 29 | 39 |
-| `residence` | SRMIST Hostels Rules and Regulations (Jan 2025) | PDF | 50 | 38 |
-| `code_of_conduct` | Code of Conduct for Students | HTML | 13 | 20 |
-| | | | **212** | **262** |
+| `attendance` | Academic Regulations 2021 (UG / Integrated PG) | PDF | 63 (52) | 78 (66) |
+| `examination` | Examination Policy | HTML | 61 (59) | 90 (88) |
+| `academic_integrity` | Plagiarism Policy (2017) | PDF | 9 (9) | 11 (11) |
+| `scholarship` | Scholarship Policy | HTML | 31 (29) | 45 (39) |
+| `scholarship_categories` (`scholarship`) | SRMIST Scholarship Categories 2025-26 (Amended) - **added 2026-11-20** | PDF | 13 (-) | 22 (-) |
+| `residence` | SRMIST Hostels Rules and Regulations (Jan 2025) | PDF | 35 (50) | 38 (38) |
+| `code_of_conduct` | Code of Conduct for Students | HTML | 13 (13) | 23 (20) |
+| | | | **225 (212)** | **307 (262)** |
 
-Of the 212 parsed sections, **192 are indexed**: the rest are contents-page
-entries, bare titles and unfinished fragments that the chunker drops (see
-4.4). A section longer than 1800 characters becomes several chunks that share
-one citation. The largest section is 10,395 characters (an examination
-section); before the ingestion repair it was about 42,000.
+Of the 225 parsed sections, **222 are indexed** (192 of 212 before): the hostel
+rules' contents page is now dropped at ingestion instead of producing
+near-empty sections. A section longer than 1800 characters becomes several
+chunks that share one citation. The largest section is 10,395 characters (an
+examination section); before the first ingestion repair it was about 42,000.
+
+A document is cited as `{university}/{key}/{section}`. The key is the policy
+type unless the manifest entry sets `key`, which it does for the second
+scholarship document so the two never share a citation.
 
 Why the numbers moved since the 11 Nov version of this file: the examination
 policy went from 26 to 59 sections because Roman-numeral headings are now
@@ -381,8 +453,20 @@ affect results, for recording alongside runs. The environment variable
    - **Footer removal (new):** SRM's end-of-page "Where could your journey at
      SRMIST take you?" block is dropped, but only after checking it holds
      nothing except that prompt and links.
-   - PDF: PyMuPDF; strips lines repeating 3+ times verbatim, which removes
-     running page headers and footers.
+   - **Merged-cell tables (2026-11-20):** a table with `rowspan`/`colspan` is
+     laid out as a grid with each merged cell copied where it spans, then
+     written row by row; a full-width title row ("LEVEL – 1") becomes a line
+     of its own, which the heading detector uses. Tables without a header row
+     keep each row's cells together on one line.
+   - PDF (rewritten 2026-11-20): PyMuPDF. Tables are found with its table
+     finder and written one row per line (merged cells filled by position; a
+     table continued on the next page keeps its header; e-mails cut by a page
+     break rejoined; contents tables dropped; blank "%"/"-" templates written
+     as their column names). The rest of the page is read top to bottom as
+     text blocks. Running headers/footers are lines at the top or bottom of
+     3+ pages; a bare number at a page edge is a page number. The old filter,
+     which removed any short line repeated 3+ times anywhere, deleted real
+     table data and is gone.
 3. **`normalize.py`** - splits text into `Section` objects by detecting four
    heading styles: numbered (`4.2 Minimum Attendance`), ALL-CAPS
    (`REGISTRATION AND ENROLLMENT:`), numbered headings buried mid-line by PDF
@@ -391,7 +475,10 @@ affect results, for recording alongside runs. The environment variable
    starting a sentence never matches; cited as e.g.
    `II-admission_to_examinations`). A table row is never a heading, and a
    numeric band such as "90 to 94.99 Percentile" is not treated as a numbered
-   heading.
+   heading. Added 2026-11-20: "8.Employee ward scholarship" (no space after
+   the dot), "R n.n Title" regulation lines whatever their case, a lone
+   "16.0" joined to the title below it, and an ALL CAPS heading wrapped over
+   two lines.
 
 `python scripts/ingest.py --offline` rebuilds `data/processed/` from the
 bytes already in `data/raw/` (after checking them against the recorded
@@ -420,6 +507,13 @@ university editing a page. Rebuild the index afterwards.
   what gets **stored as chunk text** does not. Search benefits from the
   context; verification must check claims against the university's words
   alone, not a string we assembled.
+- **Optional, switched off since 2026-11-20** (added by a teammate on 19–20
+  Nov; measured harmful or neutral on the tuning split, see 0.0):
+  - `summarize.py` — one language-model summary per section, carried by every chunk (`chunking.summaries`, `summary_in_prompt`);
+  - `entities.py` + `retrieve.py` — a small boost for passages naming the same people as the question (`retrieval.entity_boost`);
+  - `classify.py` — reader labels per section and an audience filter (`retrieval.audience_filter`).
+
+  With them off, `build_index.py` makes no language-model calls.
 
 ### 4.5 Retrieval and generation
 
@@ -546,6 +640,11 @@ Three independent checks per claim, combined by `verifier.py`.
   word (`policy_says()`), together with a note that this is the sentence the
   checker found, not a rewrite. That sentence is the one the NLI model scored
   as most contradictory, so it is not always a natural correction.
+- **Table-row check (2026-11-20), `verify/table.py`.**
+  - When the NLI model does not support a claim, or the numeric guard vetoes it, the check looks for the single table row the claim describes.
+  - A row matches when it holds every claim number (exactly, or inside a range the row states, with at least one exact), at least 60% of the claim's words and every name it capitalises, no word that belongs only to another row, and each number in a cell the claim talks about.
+  - Exactly one row may match.
+  - It grants support (score `verification.table_row_score`, 0.9, `checks.table_row = True`) and never refutes. It is skipped when a cited prose passage contradicts the claim at the conflict threshold.
 
 ### 4.7 The relevance gate - `verify/relevance.py`
 
@@ -1033,7 +1132,7 @@ py -3.12 -m venv .venv
 .venv\Scripts\activate
 pip install torch --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
-ollama pull qwen3:4b
+ollama pull qwen3.5:9b   # default; backup: ollama pull qwen3:4b
 
 pytest                              # no GPU, model or network needed
 python scripts/ingest.py            # download and process the 6 documents

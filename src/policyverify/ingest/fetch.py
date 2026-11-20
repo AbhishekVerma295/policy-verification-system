@@ -2,7 +2,8 @@
 fetch.py - download the documents listed in data/manifest.yaml.
 
 Reads the manifest, downloads each policy document, and saves the raw bytes
-under data/raw/{university}/{policy_type}.{ext}. Nothing here parses or
+under data/raw/{university}/{key}.{ext}, where key is the policy type
+unless the manifest entry names one (see document_key). Nothing here parses or
 cleans the content - that is extract.py's job. This stage only answers one
 question: "did we get the bytes we expected, and are they the same bytes as
 last time?"
@@ -51,6 +52,17 @@ class FetchResult:
     changed_since_last_fetch: bool
 
 
+def document_key(policy: dict) -> str:
+    """The name a manifest entry is stored and cited under.
+
+    Normally the policy type ("scholarship"). An entry may set `key` when a
+    second document of the same type is added - the Scholarship Categories
+    PDF (key "scholarship_categories") sits beside the scholarship web page
+    - so the two never share a file name, a document ID or a citation.
+    """
+    return policy.get("key") or policy["type"]
+
+
 def load_manifest(path: Path | None = None) -> dict:
     """Read data/manifest.yaml as a plain dict."""
     config = get_config()
@@ -73,21 +85,22 @@ def _save_checksums(checksums_path: Path, data: dict) -> None:
 def fetch_one(
     university: str, policy: dict, raw_dir: Path, checksums: dict
 ) -> FetchResult:
-    """Download one document and save it under data/raw/{university}/{type}.{ext}."""
+    """Download one document and save it under data/raw/{university}/{key}.{ext}."""
     url = policy["url"]
     resp = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
     resp.raise_for_status()
     raw = resp.content
 
     checksum = hashlib.sha256(raw).hexdigest()
-    doc_id = f"{university}/{policy['type']}"
+    key = document_key(policy)
+    doc_id = f"{university}/{key}"
     previous = checksums.get(doc_id, {}).get("checksum")
     changed = previous is not None and previous != checksum
 
     ext = "pdf" if policy["format"] == "pdf" else "html"
     out_dir = raw_dir / university
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"{policy['type']}.{ext}"
+    out_path = out_dir / f"{key}.{ext}"
     out_path.write_bytes(raw)
 
     checksums[doc_id] = {

@@ -180,7 +180,9 @@ def _cell_text(el: Tag) -> str:
 
 
 def _is_serial_header(text: str) -> bool:
-    return re.sub(r"[\s.]", "", text).lower() in _SERIAL_HEADERS
+    # A combined PDF header ("Details of Schemes - Sl. No") counts by its last part.
+    last = text.rsplit(" - ", 1)[-1]
+    return re.sub(r"[\s.]", "", last).lower() in _SERIAL_HEADERS
 
 
 def _render_tables(soup: BeautifulSoup) -> None:
@@ -233,33 +235,218 @@ def _table_rows_as_lines(table: Tag) -> list[str]:
     rows = [r for r in rows if r]
     if len(rows) < 2:
         return []
+    merged = any(
+        int(cell.get("rowspan", 1) or 1) > 1 or int(cell.get("colspan", 1) or 1) > 1
+        for row in rows
+        for cell in row
+    )
+    if merged:
+        return _merged_table_lines(table)
     width = len(rows[0])
     if width < 2 or any(len(r) != width for r in rows):
         return []
-    for row in rows:
-        for cell in row:
-            if int(cell.get("rowspan", 1) or 1) > 1 or int(cell.get("colspan", 1) or 1) > 1:
-                return []
 
     header = [_cell_text(c) for c in rows[0]]
     all_th = all(c.name == "th" for c in rows[0])
     if not all(header) or not (all_th or _is_serial_header(header[0])):
-        return []
+        return _headerless_lines([[_cell_text(c) for c in r] for r in rows])
+    return _simple_table_lines(table, rows, header)
 
+
+def _simple_table_lines(table: Tag, rows: list[list[Tag]], header: list[str]) -> list[str]:
+    """Rows of a rectangular table with a clear header, one line each."""
     label = _table_label(table)
     lines = []
     for row in rows[1:]:
-        pairs = [
-            f"{h}: {v}"
-            for h, v in zip(header, (_cell_text(c) for c in row), strict=True)
-            if v and not _is_serial_header(h)
-        ]
-        if not pairs:
-            continue  # an empty row, e.g. a blank line on a printed form
-        line = TABLE_CELL_SEPARATOR.join(([label] if label else []) + pairs)
-        if line[-1] not in ".!?":
-            line += "."
-        lines.append(line)
+        line = row_line(label, header, [_cell_text(c) for c in row])
+        if line:
+            lines.append(line)
+    return lines
+
+
+def row_line(label: str, header: list[str], values: list[str]) -> str:
+    """One table row as one self-contained line, or "" for an empty row.
+
+    "Label | Header 1: value 1 | Header 2: value 2." Serial-number columns
+    are dropped, empty cells are skipped, and a cell identical to the one
+    before it, header and value (one merged cell spread over two columns),
+    is written once. Shared by the HTML and PDF table readers.
+    """
+    pairs: list[str] = []
+    previous: tuple[str, str] | None = None
+    for h, v in zip(header, values, strict=True):
+        if not v or _is_serial_header(h) or previous == (h, v):
+            continue
+        pairs.append(f"{h}: {v}" if h and h != v else v)
+        previous = (h, v)
+    if not pairs:
+        return ""  # an empty row, e.g. a blank line on a printed form
+    line = TABLE_CELL_SEPARATOR.join(([label] if label else []) + pairs)
+    if line[-1] not in ".!?":
+        line += "."
+    return line
+
+
+def _headerless_lines(rows: list[list[str]]) -> list[str]:
+    """A table with no header row: each row's cells kept together on one line.
+
+    There are no column names to attach ("The Chancellor | Velvet (Blue with
+    gold border)."), but a value at least stays on the same line as the row
+    it belongs to. A row with a single non-empty cell is written as plain
+    text: with nothing beside it there is nothing to keep together.
+    """
+    lines = []
+    for row in rows:
+        cells = [c for c in row if c]
+        deduped = [c for i, c in enumerate(cells) if i == 0 or c != cells[i - 1]]
+        if not deduped:
+            continue
+        if len(deduped) == 1:
+            lines.append(deduped[0])
+            continue
+        line = TABLE_CELL_SEPARATOR.join(deduped)
+        lines.append(line if line[-1] in ".!?" else line + ".")
+    return lines
+
+
+# --- tables with merged cells ----------------------------------------------
+#
+# Ten scholarship tables, six of the code of conduct's seven and three of the
+# examination policy's six have merged cells (rowspan/colspan). They used to
+# be left flat, one cell per line, for fear of attaching a merged cell to the
+# wrong row - and flat they could not be read at all: the Employee Ward
+# Scholarship table became a column of "100% / 75% / 50% / 25%" followed by a
+# column of "20 years above / > 15 < 20 yrs / ...", and the code of conduct's
+# consequences sat between the misconduct items they punish.
+#
+# There is no guessing involved, though. rowspan="3" says exactly which rows a
+# cell covers, so the table is laid out as a grid with every merged cell
+# copied into each position it covers - the same grid a reader sees - and
+# each row is then written out like any other. Tested against every merged
+# table on the three SRM pages (2026-11-20).
+
+
+class _GridCell:
+    __slots__ = ("text", "bold", "origin")
+
+    def __init__(self, text: str, bold: bool, origin: tuple[int, int]) -> None:
+        self.text = text
+        self.bold = bold
+        self.origin = origin  # (row, col) of the <td> this position belongs to
+
+
+def _table_grid(table: Tag) -> list[list[_GridCell]]:
+    """The table as a rectangular grid, merged cells copied where they span."""
+    grid: dict[tuple[int, int], _GridCell] = {}
+    trs = [tr for tr in table.find_all("tr") if tr.find_all(["td", "th"], recursive=False)]
+    for r, tr in enumerate(trs):
+        c = 0
+        for cell in tr.find_all(["td", "th"], recursive=False):
+            while (r, c) in grid:
+                c += 1
+            rowspan = max(1, int(cell.get("rowspan", 1) or 1))
+            colspan = max(1, int(cell.get("colspan", 1) or 1))
+            text = _cell_text(cell)
+            bold = cell.name == "th" or (bool(text) and _all_bold(cell))
+            for i in range(rowspan):
+                for j in range(colspan):
+                    grid[(r + i, c + j)] = _GridCell(text, bold, (r, c))
+            c += colspan
+    if not grid:
+        return []
+    height = max(r for r, _ in grid) + 1
+    width = max(c for _, c in grid) + 1
+    empty = _GridCell("", False, (-1, -1))
+    return [[grid.get((r, c), empty) for c in range(width)] for r in range(height)]
+
+
+def _all_bold(cell: Tag) -> bool:
+    strings = [s for s in cell.find_all(string=True) if s.strip()]
+    return bool(strings) and all(_is_bold(s, cell) for s in strings)
+
+
+def _is_full_width(row: list[_GridCell]) -> bool:
+    """One cell spanning the whole row: a title ("LEVEL – 1") or a note."""
+    return len({cell.origin for cell in row}) == 1 and bool(row[0].text)
+
+
+def _is_header_row(row: list[_GridCell]) -> bool:
+    """Column names, not data.
+
+    Bold or <th> cells; or a serial-number first column ("Sl. No"); or short
+    names with no digits and no brackets ("Sub Category | Prerequisites").
+    The last rule is what keeps a header-less list such as the examination
+    policy's robe colours ("The Chancellor | Velvet (Blue with gold
+    border)") from being read as column names.
+    """
+    cells = [cell for cell in row if cell.text]
+    if not cells:
+        return False
+    if all(cell.bold for cell in cells) or _is_serial_header(row[0].text):
+        return True
+    return all(
+        len(cell.text) <= 50 and not re.search(r"[\d()]", cell.text) for cell in cells
+    )
+
+
+def _merged_table_lines(table: Tag) -> list[str]:
+    grid = _table_grid(table)
+    if len(grid) < 2 or len(grid[0]) < 2:
+        return []
+
+    # Leading full-width rows are the table's title ("LEVEL – 1"). The title
+    # is written on its own line first, so the section heading detector can
+    # use it, and also starts every row, so each row says which level it is.
+    titles: list[str] = []
+    body = grid
+    while body and _is_full_width(body[0]):
+        titles.append(body[0][0].text)
+        body = body[1:]
+    if not body:
+        return []
+
+    # Header rows: the first row if it looks like one, plus every following
+    # row that a header cell reaches down into (the Employee Ward
+    # Scholarship header is three rows deep: "Prerequisites" over "Staff" /
+    # "Concession Amount in Tuition Fee" over "100% | 75% | 50% | 25%").
+    first = len(titles)  # grid index of body[0]
+    n_header = 0
+    if _is_header_row(body[0]):
+        header_rows = {first}
+        n_header = 1
+        while n_header < len(body) - 1 and any(
+            cell.origin[0] in header_rows for cell in body[n_header]
+        ):
+            header_rows.add(first + n_header)
+            n_header += 1
+
+    lines = list(titles)
+    if n_header == 0:
+        lines += _headerless_lines([[cell.text for cell in row] for row in body])
+        return lines
+
+    width = len(body[0])
+    header = []
+    for c in range(width):
+        parts: list[str] = []
+        for row in body[:n_header]:
+            text = row[c].text
+            if text and text not in parts:
+                parts.append(text)
+        # The two innermost levels name a column well enough
+        # ("Concession Amount in Tuition Fee - 100%"); the outermost level
+        # ("Prerequisites-Years of Continuous Service in SRM") would repeat
+        # on every cell of the row.
+        header.append(" - ".join(parts[-2:]))
+
+    label = " - ".join(titles) or _table_label(table)
+    for row in body[n_header:]:
+        if _is_full_width(row):
+            lines.append(row[0].text)  # a note across the table ("NOTE: ...")
+            continue
+        line = row_line(label, header, [cell.text for cell in row])
+        if line:
+            lines.append(line)
     return lines
 
 
@@ -335,168 +522,432 @@ def _is_bold(s, block: Tag) -> bool:
     return False
 
 
-def extract_pdf(raw: bytes) -> str:
-    """PDF bytes -> plain text, page by page, in order.
+# --- PDF ----------------------------------------------------------------------
+#
+# Two things went wrong with PDFs until 2026-11-20, both found by comparing
+# the stored text against the real documents:
+#
+# 1. Tables were read one cell per line, like everything else on the page,
+#    so a row fell apart: the hostel rules' warden table became a list of
+#    hostel names followed by a list of e-mail addresses with nothing to say
+#    which belonged to which.
+# 2. Worse, the old header/footer filter deleted ANY short line seen three
+#    or more times in the document. In a table a cell is often its own line,
+#    and cells repeat: it deleted every grade point from the grade table
+#    (O -> 10, A+ -> 9, ...), codes 9 and 8 from the attendance-code table,
+#    "First Class" / "Second Class" and the CGPA bands from the
+#    class/distinction tables, and every "%" - 628 lines of the Academic
+#    Regulations alone. An evaluation label had even been written from the
+#    damaged text (num-011, "attendance code at 90%").
+#
+# Now each page's tables are found with pymupdf's table finder and written
+# out one row per line (see _pdf_table_lines), the rest of the page is read
+# as text blocks with the table areas cut out, and the header/footer filter
+# only looks at the top and bottom lines of each page (_strip_page_furniture).
 
-    Pages with a simple table get it written out one row per line, exactly as
-    HTML tables are (see _pdf_page_text). Every other page is read with plain
-    get_text(), unchanged.
-    """
+# Page furniture lives in the first and last few lines of a page.
+_EDGE_LINES = 3
+# A line is a running header/footer if it sits at a page edge on this many pages.
+_FURNITURE_MIN_PAGES = 3
+_FURNITURE_MAX_LEN = 100
+# A table whose first rows contain one of these is a table of contents.
+_TOC_HEADERS = {"page", "page no", "page no.", "pageno"}
+# A cell that holds only a number, percentage, dash or range: data, not a column name.
+_NUMERIC_CELL_RE = re.compile(r"^[\s\d.,%\-–/<>≥≤]*$")
+
+
+class _PdfTable:
+    """One table found on a PDF page, cleaned and ready to write out."""
+
+    def __init__(
+        self,
+        bbox: tuple[float, float, float, float],
+        rows: list[list[str | None]],
+        filled: list[list[str]],
+    ):
+        self.bbox = bbox
+        self.rows = rows  # None = a position covered by a merged cell
+        self.filled = filled  # the same rows, each merged position holding its cell's text
+        self.header: list[str] | None = None
+        self.body: list[list[str]] = []
+        self.toc = False
+        self.label = ""
+        self.n_header = 0
+        self.last_group: tuple[str, str] | None = None
+        # The table this one continues (same columns, no header of its own).
+        self.continues: _PdfTable | None = None
+
+    def group_seen(self) -> tuple[str, str] | None:
+        """The last row group written, here or in the table this one continues."""
+        if self.last_group is None and self.continues is not None:
+            return self.continues.group_seen()
+        return self.last_group
+
+
+def extract_pdf(raw: bytes) -> str:
+    """PDF bytes -> plain text, page by page, in order, tables row by row."""
     doc = pymupdf.open(stream=raw, filetype="pdf")
     try:
-        plain = [page.get_text() for page in doc]
-        pages = [_pdf_page_text(page) for page in doc]
+        page_tables = [_find_pdf_tables(page) for page in doc]
+        _prepare_pdf_tables([t for tables in page_tables for t in tables])
+        # Two passes: the first only finds the running headers and footers,
+        # so the second never takes one as a table's title.
+        first = [_page_lines(page, tables, set()) for page, tables in zip(doc, page_tables, strict=True)]
+        furniture = _page_furniture(first)
+        pages = [
+            _page_lines(page, tables, furniture)
+            for page, tables in zip(doc, page_tables, strict=True)
+        ]
     finally:
         doc.close()
-    # Which lines are page furniture is decided on the PLAIN text, exactly
-    # as before tables were rendered. Deciding it on the rendered text let a
-    # table change the counts: the hostel contacts table's serial numbers
-    # ("6", "7", ...) stopped counting towards the page numbers, those
-    # survived, and contents-page entries such as "Admission 6" became tiny
-    # sections that took the real sections' citation IDs
-    # (guest_accommodation became guest_accommodation-2).
-    text = _drop_lines("\n".join(pages), _repeated_lines("\n".join(plain)))
-    return _clean_text(text)
+    return _clean_text("\n".join(_strip_page_furniture(pages, furniture)))
 
 
-# Header words of a contents page. Its "table" is page numbers, not policy.
-_TOC_HEADER_RE = re.compile(r"\b(page|contents)\b", re.IGNORECASE)
-# Wider tables in these PDFs are multi-level assessment grids with merged
-# header cells; read row by row they come out as nonsense.
-_PDF_TABLE_MAX_COLS = 4
+def _find_pdf_tables(page) -> list[_PdfTable]:
+    """The real tables on one page.
 
-
-def _pdf_cell_text(bbox, words) -> str | None:
-    """A cell's text, rebuilt from the page's words inside the cell's box.
-
-    PyMuPDF's own table text drops the spaces in these PDFs
-    ("Attendanceroundedto"), so the words are gathered by position instead
-    and joined in reading order.
+    pymupdf also reports some boxed prose as a "table" (the Academic
+    Regulations' R 4.3 is a paragraph inside a ruled box). A table with
+    fewer than two columns that hold any text is left to the text reader,
+    so a heading inside such a box is still seen as a heading.
     """
-    if bbox is None:
-        return None
-    x0, y0, x1, y1 = bbox
-    inside = [
-        w for w in words
-        if x0 <= (w[0] + w[2]) / 2 <= x1 and y0 <= (w[1] + w[3]) / 2 <= y1
-    ]
-    inside.sort(key=lambda w: (w[5], w[6], w[7]))  # block, line, word
-    return " ".join(w[4] for w in inside).strip()
+    found = []
+    words = page.get_text("words")
+    for table in page.find_tables().tables:
+        rows = [[_pdf_cell(c) for c in row] for row in _cell_texts(table, words)]
+        width = max((len(r) for r in rows), default=0)
+        used = [c for c in range(width) if any(c < len(r) and r[c] for r in rows)]
+        if len(rows) < 1 or len(used) < 2:
+            continue
+        rows = [r + [""] * (width - len(r)) for r in rows]
+        found.append(_PdfTable(tuple(table.bbox), rows, _fill_by_geometry(table, rows)))
+    return found
 
 
-def _pdf_table_lines(table, words) -> list[str]:
-    """Row lines for one PDF table, or [] to leave its text untouched.
+def _cell_texts(table, words) -> list[list[str | None]]:
+    """Each cell's text, rebuilt from the page's words inside the cell's box.
 
-    The same contract as _table_rows_as_lines for HTML: only tables that
-    read unambiguously row by row are rewritten. A cell merged DOWN over
-    several rows (the "Category" column of the class/distinction tables)
-    arrives as None below its first row, and is filled from the row above,
-    which is what the merged cell means. Anything else merged, a header with
-    a gap, a contents page, or a wide grid is left as it was.
+    pymupdf's own table.extract() drops the spaces between words in these
+    PDFs on some installations ("Attendanceroundedto: 95%andabove"), which
+    broke the attendance code and grade tables for search and for the
+    checks. The words are gathered by position instead: words on one line
+    joined by spaces, lines by newlines (which _pdf_cell relies on to rejoin
+    an e-mail address wrapped across lines). A merged position stays None,
+    as table.extract() reports it.
     """
-    rows = [[_pdf_cell_text(c, words) for c in r.cells] for r in table.rows]
-    rows = [r for r in rows if any(r)]
-    if len(rows) < 2:
-        return []
-    header = rows[0]
-    width = len(header)
-    if not 2 <= width <= _PDF_TABLE_MAX_COLS or not all(header):
-        return []
-    if any(_TOC_HEADER_RE.search(h) for h in header):
-        return []
-    filled = []
-    for i, row in enumerate(rows[1:]):
-        if len(row) != width:
-            return []
+    out: list[list[str | None]] = []
+    for row in table.rows:
+        texts: list[str | None] = []
+        for box in row.cells:
+            if box is None:
+                texts.append(None)
+                continue
+            x0, y0, x1, y1 = box
+            inside = sorted(
+                (w for w in words
+                 if x0 <= (w[0] + w[2]) / 2 <= x1 and y0 <= (w[1] + w[3]) / 2 <= y1),
+                key=lambda w: (w[5], w[6], w[7]),  # block, line, word
+            )
+            lines: dict[tuple[int, int], list[str]] = {}
+            for w in inside:
+                lines.setdefault((w[5], w[6]), []).append(w[4])
+            texts.append("\n".join(" ".join(ws) for ws in lines.values()))
+        out.append(texts)
+    return out
+
+
+def _fill_by_geometry(table, rows: list[list[str | None]]) -> list[list[str]]:
+    """Each merged position filled with the text of the cell that covers it.
+
+    pymupdf reports a merged position as None without saying which way the
+    merge runs. In the Scholarship Categories table "Founder's Scholarship"
+    runs DOWN over six rows, while "SRM Merit Scholarship" runs ACROSS two
+    columns - copying from the row above would give the Merit row the
+    Founder's sub-category letter. So the cell is found by position: the
+    real cell whose box contains the centre of the merged position.
+    """
+    origins: list[tuple[tuple[float, float, float, float], str]] = []
+    col_x: dict[int, tuple[float, float]] = {}
+    for r, row in enumerate(table.rows):
+        for c, box in enumerate(row.cells):
+            if box is None or r >= len(rows) or c >= len(rows[r]):
+                continue
+            origins.append((box, rows[r][c] or ""))
+            # A column's own extent: its narrowest real cell (a merged cell is wider).
+            if c not in col_x or (box[2] - box[0]) < (col_x[c][1] - col_x[c][0]):
+                col_x[c] = (box[0], box[2])
+    filled: list[list[str]] = []
+    for r, row in enumerate(rows):
+        y0, y1 = table.rows[r].bbox[1], table.rows[r].bbox[3]
+        cy = (y0 + y1) / 2
         out = []
-        for col, cell in enumerate(row):
-            if cell is None:
-                if i == 0 or col != 0:
-                    return []  # merged sideways, or nothing above to copy
-                cell = filled[-1][col]
-            out.append(cell)
+        for c, text in enumerate(row):
+            if text is not None or c not in col_x:
+                out.append(text or "")
+                continue
+            cx = (col_x[c][0] + col_x[c][1]) / 2
+            cover = [
+                t
+                for box, t in origins
+                if box[0] - 1 <= cx <= box[2] + 1 and box[1] - 1 <= cy <= box[3] + 1
+            ]
+            out.append(cover[0] if cover else "")
         filled.append(out)
+    return filled
 
+
+def _pdf_cell(cell: str | None) -> str | None:
+    """Join a cell's lines. E-mail addresses wrapped mid-address are rejoined
+    without a space ("warden.paari.ktr@srmist.edu.i" + "n")."""
+    if cell is None:
+        return None
+    if "@" in cell:
+        return re.sub(r"\s*\n\s*", "", cell).strip()
+    return _SPACE_RUN_RE.sub(" ", cell).strip()
+
+
+def _prepare_pdf_tables(tables: list[_PdfTable]) -> None:
+    """Find each table's header and fill its merged cells, across the document.
+
+    Done over all tables at once because a table can run onto the next page:
+    the warden table's last rows sit on the next page with no header, after
+    a fragment row holding only the ".in" that the page break cut off an
+    e-mail address.
+    """
+    previous: _PdfTable | None = None
+    toc_width = 0  # column count of the table of contents, once seen
+    for table in tables:
+        rows = table.rows
+        width = max(len(r) for r in rows)
+        top = " ".join((c or "").lower() for row in rows[:2] for c in row)
+        is_toc = any(re.search(rf"\b{re.escape(h)}\b", top) for h in _TOC_HEADERS) and len(rows) > 5
+        # The contents run onto the next page without their header row.
+        continues_toc = toc_width == width and len(rows) > 5
+        if is_toc or continues_toc:
+            table.toc = True  # a table of contents: page furniture, dropped
+            toc_width = width
+            continue
+        toc_width = 0
+
+        # A fragment row at the very top continues the previous table's last row.
+        filled = table.filled
+        while rows and previous is not None and previous.body and _is_fragment_row(rows[0]):
+            _append_fragment(previous.body[-1], rows[0])
+            rows, filled = rows[1:], filled[1:]
+
+        n_header = _pdf_header_rows(rows)
+        if n_header:
+            table.header = _pdf_header_names(filled[:n_header])
+        elif previous is not None and previous.header and len(previous.header) == width:
+            table.header = previous.header  # the same table, continued
+            table.continues = previous
+        table.body = [list(r) for r in filled[n_header:]]
+        table.n_header = n_header
+        if table.body or table.header:
+            previous = table
+
+
+def _is_fragment_row(row: list[str | None]) -> bool:
+    cells = [c for c in row if c]
+    return len(cells) == 1 and len(cells[0]) <= 15 and (cells[0][0] == "." or cells[0][0].islower())
+
+
+def _append_fragment(target: list[str], fragment: list[str | None]) -> None:
+    for c, text in enumerate(fragment):
+        if text and c < len(target):
+            joiner = "" if text.startswith(".") or "@" in target[c] else " "
+            target[c] = f"{target[c]}{joiner}{text}"
+
+
+def _pdf_header_rows(rows: list[list[str | None]]) -> int:
+    """How many leading rows are column names (0 if the table has none).
+
+    The first row is a header if no cell is a bare number ("1", "95%") -
+    that rules out the hostel department list, whose first row is "1 |
+    Office | 8056016601". Further rows are header rows too while the row
+    above them has merged positions (a grouped header like "Concession
+    details" over "Tuition Fee | Hostel Fee") and they still hold no bare
+    numbers.
+    """
+    if not rows or not _is_pdf_header_row(rows[0]):
+        return 0
+    n = 1
+    while (
+        n < len(rows) - 1
+        and any(c is None for c in rows[n - 1])
+        and not _starts_with_serial(rows[n - 1])
+        and _is_pdf_header_row(rows[n])
+    ):
+        n += 1
+    return n
+
+
+def _starts_with_serial(row: list[str | None]) -> bool:
+    """A header row that opens with "Sl. No" is the last header row: the
+    Scholarship Categories' third page has rows "X | Performance Based" and
+    "XI | Concessions" with no bare numbers, which would otherwise be read
+    as more header rows."""
+    first = next((c for c in row if c), "")
+    return _is_serial_header(first)
+
+
+def _is_pdf_header_row(row: list[str | None]) -> bool:
+    cells = [c for c in row if c]
+    return bool(cells) and not any(_NUMERIC_CELL_RE.match(c) for c in cells)
+
+
+def _pdf_header_names(filled: list[list[str]]) -> list[str]:
+    """Column names from one or more header rows (merged cells already filled)."""
+    names = []
+    for c in range(len(filled[0])):
+        parts: list[str] = []
+        for row in filled:
+            if row[c] and row[c] not in parts:
+                parts.append(row[c])
+        names.append(" - ".join(parts[-2:]))
+    return names
+
+
+def _pdf_table_lines(table: _PdfTable, label: str) -> list[str]:
+    if table.toc:
+        return []
+    if table.header is None:
+        return _headerless_lines(table.body)
+    if _is_blank_template(table):
+        # The Academic Regulations print blank assessment templates: Bloom's
+        # levels down the side, "%" and "-" to be filled in. Row by row they
+        # say nothing; the only information is in the column names
+        # ("Formative CLA-1 Average of unit test (45%)"), written once.
+        names: list[str] = []
+        for row in table.rows[: table.n_header]:
+            for cell in row:
+                if cell and cell not in names:
+                    names.append(cell)
+        return [TABLE_CELL_SEPARATOR.join(([label] if label else []) + names) + "."] if names else []
+    group = _group_columns(table.header)
     lines = []
-    for row in filled:
-        pairs = [
-            f"{h}: {v}"
-            for h, v in zip(header, row, strict=True)
-            if v and not _is_serial_header(h)
-        ]
-        if len(pairs) < 2:
-            continue  # a blank or label-only row says nothing on its own
-        line = TABLE_CELL_SEPARATOR.join(pairs)
-        if line[-1] not in ".!?":
-            line += "."
-        lines.append(line)
+    for row in table.body:
+        if group is not None:
+            serial, name = row[group[0]].strip(), row[group[1]].strip()
+            if serial and name and (serial, name) != table.group_seen():
+                # "VIII. Employee Ward Scholarship": a heading for each group
+                # of rows, so each scholarship becomes its own citable section.
+                lines.append(f"{serial}. {name}")
+                table.last_group = (serial, name)
+        line = row_line(label, table.header, row)
+        if line:
+            lines.append(line)
     return lines
 
 
-def _pdf_page_text(page) -> str:
-    """One page's text, with its simple tables rewritten as row lines.
+def _group_columns(header: list[str]) -> tuple[int, int] | None:
+    """(serial column, category column) when a table lists numbered categories
+    ("Sl. No | Category | Sub Category ..."), else None."""
+    for i, name in enumerate(header[:-1]):
+        if _is_serial_header(name) and "category" in header[i + 1].lower().rsplit(" - ", 1)[-1]:
+            return i, i + 1
+    return None
 
-    A page with no renderable table is returned as plain get_text(), so
-    pages without tables come out exactly as before. On a page with one,
-    the text blocks inside the table's box are replaced, in place, by the
-    table's row lines.
+
+_PLACEHOLDER_CELLS = {"%", "-", "–", "—"}
+
+
+def _is_blank_template(table: _PdfTable) -> bool:
+    """Most body cells are "%" or "-": a form to fill in, not data."""
+    cells = [c for row in table.body for c in row[1:] if c]
+    return bool(cells) and sum(c in _PLACEHOLDER_CELLS for c in cells) * 2 >= len(cells)
+
+
+def _pdf_table_label(out: list[tuple[str, bool]], furniture: set[str]) -> str:
+    """A short title line directly above the table ("For Girls Hostels"), or "".
+
+    Taken only if it is the very last text line before the table and reads
+    like a title - short, and not the end of a sentence.
     """
-    try:
-        tables = page.find_tables().tables
-    except Exception:  # table detection is best effort; text never depends on it
-        tables = []
-    if not tables:
-        return page.get_text()
-    words = page.get_text("words")
-    rendered = [(t.bbox, lines) for t in tables if (lines := _pdf_table_lines(t, words))]
-    if not rendered:
-        return page.get_text()
-
-    def table_at(block) -> int | None:
-        cx, cy = (block[0] + block[2]) / 2, (block[1] + block[3]) / 2
-        for n, (bbox, _) in enumerate(rendered):
-            if bbox[0] <= cx <= bbox[2] and bbox[1] <= cy <= bbox[3]:
-                return n
-        return None
-
-    parts: list[str] = []
-    placed: set[int] = set()
-    for block in page.get_text("blocks"):
-        if block[6] != 0:
-            continue  # an image block
-        n = table_at(block)
-        if n is None:
-            parts.append(block[4])
-        elif n not in placed:
-            placed.add(n)
-            parts.append("\n".join(rendered[n][1]) + "\n")
-    return "".join(parts)
+    for line, is_table in reversed(out):
+        if not line.strip() or line.strip() in furniture or re.fullmatch(r"\d{1,3}", line.strip()):
+            continue
+        text = line.strip()
+        if is_table or len(text) > _MAX_PDF_LABEL or text[-1] in ".;,":
+            return ""
+        return text.rstrip(":").strip()
+    return ""
 
 
-def _strip_repeated_lines(text: str, min_repeats: int = 3, max_len: int = 100) -> str:
-    """Remove lines that repeat verbatim many times across the document.
+# A table title above a PDF table is a short line.
+_MAX_PDF_LABEL = 60
 
-    Found necessary by running this against a real SRM PDF: a running page
-    header ("SRM INSTITUTE OF SCIENCE AND TECHNOLOGY") was appearing once
-    per page and being mistaken for a section heading downstream in
-    normalize.py - it looks exactly like one, short and title-cased, on its
-    own line. Real body content essentially never repeats verbatim three or
-    more times across a whole document, so frequency is a cheap and reliable
-    signal for "this is page furniture (header/footer/running title), not
-    content" - specific to PDFs, since page.get_text() concatenates pages
-    with no marker showing where one page's header repeats the last one's.
+
+def _page_lines(page, tables: list[_PdfTable], furniture: set[str]) -> list[tuple[str, bool]]:
+    """One page as (line, is_table_row) pairs, tables written where they sit.
+
+    Text blocks are read top to bottom (pymupdf's sort=True). The PDF's own
+    order is not always that: in the Academic Regulations it put the
+    attendance-code table of R 7.2 inside R 6.2. A block whose centre lies
+    inside a table is skipped, since the table is written out row by row
+    instead, just before the first block below its top edge.
     """
-    return _drop_lines(text, _repeated_lines(text, min_repeats, max_len))
+    out: list[tuple[str, bool]] = []
+    pending = sorted(tables, key=lambda t: t.bbox[1])
+
+    def emit_tables_above(y: float) -> None:
+        while pending and pending[0].bbox[1] <= y:
+            table = pending.pop(0)
+            # A table continued from the page before keeps that table's title.
+            table.label = _pdf_table_label(out, furniture) or (
+                table.continues.label if table.continues is not None else ""
+            )
+            out.extend((line, True) for line in _pdf_table_lines(table, table.label))
+
+    for x0, y0, x1, y1, text, _bno, btype in page.get_text("blocks", sort=True):
+        if btype != 0:
+            continue  # an image
+        cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+        if any(t.bbox[0] <= cx <= t.bbox[2] and t.bbox[1] <= cy <= t.bbox[3] for t in tables):
+            continue
+        emit_tables_above(y0)
+        out.extend((line, False) for line in text.splitlines())
+    emit_tables_above(float("inf"))
+    return out
 
 
-def _repeated_lines(text: str, min_repeats: int = 3, max_len: int = 100) -> set[str]:
-    """The short lines that repeat verbatim at least `min_repeats` times."""
-    counts = Counter(ln.strip() for ln in text.splitlines() if ln.strip())
-    return {line for line, n in counts.items() if n >= min_repeats and len(line) <= max_len}
+def _page_furniture(pages: list[list[tuple[str, bool]]]) -> set[str]:
+    """Running headers and footers: lines at a page edge on several pages.
+
+    A running header ("SRM INSTITUTE OF SCIENCE AND TECHNOLOGY") used to be
+    mistaken for a section heading downstream, so it has to go - but only
+    lines at the top or bottom of a page are candidates now: a line is page
+    furniture if it sits within the first or last _EDGE_LINES text lines of
+    at least _FURNITURE_MIN_PAGES pages. Bare numbers are never on the list
+    (page numbers are handled separately, by position).
+    """
+    def edges(lines: list[tuple[str, bool]]) -> list[str]:
+        text = [ln.strip() for ln, is_table in lines if not is_table and ln.strip()]
+        return text[:_EDGE_LINES] + text[-_EDGE_LINES:]
+
+    pages_with = Counter(line for page in pages for line in set(edges(page)))
+    return {
+        line
+        for line, n in pages_with.items()
+        if n >= _FURNITURE_MIN_PAGES and len(line) <= _FURNITURE_MAX_LEN and not line.isdigit()
+    }
 
 
-def _drop_lines(text: str, noisy: set[str]) -> str:
-    return "\n".join(ln for ln in text.splitlines() if ln.strip() not in noisy)
+def _strip_page_furniture(pages: list[list[tuple[str, bool]]], furniture: set[str]) -> list[str]:
+    """Drop the furniture lines, and a bare number at the very top or bottom
+    of a page (a page number). Table rows are never removed."""
+    out: list[str] = []
+    for page in pages:
+        text_idx = [i for i, (ln, is_table) in enumerate(page) if not is_table and ln.strip()]
+        kept = [i for i in text_idx if page[i][0].strip() not in furniture]
+        page_numbers = {
+            i for i in kept[:1] + kept[-1:] if re.fullmatch(r"\d{1,3}", page[i][0].strip())
+        }
+        for i, (line, is_table) in enumerate(page):
+            if not is_table and (i in page_numbers or line.strip() in furniture):
+                continue
+            out.append(line)
+    return out
 
 
 def extract(raw: bytes, fmt: str) -> str:

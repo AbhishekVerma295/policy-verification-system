@@ -1,7 +1,7 @@
 {
   "srm/academic_integrity/3-duplication_self_plagiarism_reuse": {
     "chars": 681,
-    "sha256": "1693df793c39ca190505c245cee6c9915a7e49a8747ff5ebb7f08290d2e2064d",
+    "sha256": "8844a054b07b53df1a5f7251696089901f74fb5af521e5977847a8885b184a11",
     "used_by": [
       "fp-012",
       "neg-008"
@@ -9,28 +9,28 @@
   },
   "srm/academic_integrity/4-paraphrasing_plagiarism_intellectual_the": {
     "chars": 320,
-    "sha256": "ff6245d09292b4aca6017b4b5c81f1f6f736bacb7b60ac40e1937c48b90f3fb8",
+    "sha256": "53b642da578e166cd7152f964ae2c829245fee3c1029c8ff3da61a3c122f5682",
     "used_by": [
       "neg-009"
     ]
   },
   "srm/academic_integrity/9-verbatim_plagiarism_copy_and_paste_intel": {
     "chars": 374,
-    "sha256": "38fb25fdb5da762e9de9ea9c59ac5ecd800ddb407412cd455d5e0d5719da9fa7",
+    "sha256": "a2bc5a4e228fdd04b5d6d4a955f0852d9547aaf5de879e9b425ec2be6347d08b",
     "used_by": [
       "neg-010"
     ]
   },
   "srm/attendance/1.5-admissions_under_lateral_entry_scheme": {
-    "chars": 1106,
-    "sha256": "1ed87afa1350fb986ff1f96db1206c29ce5c2385f90750be45ecfa2f0f5f8e70",
+    "chars": 1147,
+    "sha256": "276abe07e1be64b62c2df718a9059b21593d0cb8b96ef3e50f30a1fe76bac821",
     "used_by": [
       "num-014"
     ]
   },
   "srm/attendance/3.5-summer_semester": {
-    "chars": 2932,
-    "sha256": "93ae8643dd41a5b3bdcc1bc010cd3da54e6c01b4be54c7855e3daa5678f34d01",
+    "chars": 1239,
+    "sha256": "081df09ea133f33eed10faebe0b044743a7beefee813d1ad3990c724ec5bb345",
     "used_by": [
       "fp-003",
       "neg-004",
@@ -39,37 +39,37 @@
     ]
   },
   "srm/attendance/4.6-learning_assessment_weightage": {
-    "chars": 3822,
-    "sha256": "1b75e53d27e344a718e8cb5dc174d91bb4f53c7cf4eed4c3b39ddfe86386c0c1",
+    "chars": 5502,
+    "sha256": "8c23421db5acc116522ceeefcc1c793713da32ca1e6833a039f5ebb0899722d2",
     "used_by": [
       "num-015"
     ]
   },
   "srm/attendance/5.1-semester_duration": {
-    "chars": 2306,
-    "sha256": "65b5aef87f5ce1d5adfc7d1471b830cbf303c79c26a92add5e7ceb8f9857fc89",
+    "chars": 857,
+    "sha256": "b0734327d4c58b7d326ef5a5c86b7d8524c4de4d97ccbb61403461600bf292e4",
     "used_by": [
       "num-013"
     ]
   },
   "srm/attendance/6.4-appeal": {
-    "chars": 584,
-    "sha256": "116f0b1093e9e61d28c00c8d20675fb91748ef33678c5512ed3e5e8d339f7bc3",
+    "chars": 97,
+    "sha256": "f10ded113f223d6f07341b848c7d2a7861b8823a95ee69890be83b4f96f97744",
     "used_by": [
       "fp-006"
     ]
   },
   "srm/attendance/7.2-attendance_percentage_code": {
-    "chars": 456,
-    "sha256": "95a111523ec1a678baf942b89c20fb7616d621c9b4c7cb6146aa0f7d2b7641a4",
+    "chars": 454,
+    "sha256": "03c4d9dd8a7e7d57cb0b1a51cac26743e0d942b13d09d92be2acb52025b77aef",
     "used_by": [
       "num-011",
       "xpol-009"
     ]
   },
   "srm/attendance/7.3-minimum_attendance": {
-    "chars": 1259,
-    "sha256": "36002cf73f4c3c240c470ad97ba2aa457be77071d55d6149b81f884e44b84db9",
+    "chars": 1258,
+    "sha256": "10cb83564d11bd5cabea3366bfcb68e7587a5e7539e2b97d26c091fce26258cc",
     "used_by": [
       "fp-001",
       "fp-002",
@@ -82,16 +82,16 @@
     ]
   },
   "srm/attendance/7.4-attendance_shortage_and_examination": {
-    "chars": 514,
-    "sha256": "94e26a1d4a273ff66a98902c0928ca6e645191b5b3038b4e6ac5f136129c5c2d",
+    "chars": 512,
+    "sha256": "f31f4cb72b7858c2c76ab942d7a0edc676c10b1c146cf13119314ab6ef55662f",
     "used_by": [
       "fp-002",
       "num-012"
     ]
   },
   "srm/attendance/7.5-condonation_of_attendance": {
-    "chars": 573,
-    "sha256": "5e52c68439a37275db9ae74bedec0ab019fc736af5d9ebc297dd4efefc678289",
+    "chars": 533,
+    "sha256": "bc74f1acd65a69e69533d9816e6378852ceb7c6475f31e2a6747c1abd637427c",
     "used_by": [
       "fp-005",
       "num-002",
@@ -99,45 +99,45 @@
     ]
   },
   "srm/attendance/8.2-method_of_awarding_letter_grades": {
-    "chars": 623,
-    "sha256": "f935c510006e7f52afa74dcf8b9eb94baef14dbfad471717c7125ecb21b34129",
+    "chars": 621,
+    "sha256": "3b629e2c19407483185c3fc069cc39e2e7f58c5d69ab06ed69055a2748c61cd3",
     "used_by": [
       "num-004",
       "xpol-002",
       "xpol-008"
     ]
   },
-  "srm/code_of_conduct/consequence": {
-    "chars": 1035,
-    "sha256": "eacfb7b02eb53a50e333db940cb8cae50ec9fa7f60ace26270897e8e025f8ac8",
+  "srm/code_of_conduct/3-srmist_student_conduct_expectations_as_a": {
+    "chars": 6579,
+    "sha256": "4cf81de2818cedca77ea5a3cc20c7d478ab801d168bbc27f7bd5ba6c1b2ae445",
     "used_by": [
       "un-014"
     ]
   },
   "srm/code_of_conduct/disciplinary_action_policy": {
     "chars": 465,
-    "sha256": "5d2b5df8125940b541b9acc50a21da842d0cf936ecc4d63b0988aba27294bcbb",
+    "sha256": "cdf776ec42cc07e3522e3748a86e155984cf0402483fffc9c754e4eb693b3b7e",
     "used_by": [
       "fp-009"
     ]
   },
-  "srm/code_of_conduct/or_as_a_group": {
-    "chars": 6084,
-    "sha256": "939f79476d70c1cb60119374389f40f07d11e046ea1e884d3936807d0e304477",
+  "srm/code_of_conduct/level_1": {
+    "chars": 2077,
+    "sha256": "c8bdeeda1ea4ea51ce8a4ca081fd3b0b9bd60d4805206ede9ba5154203458575",
     "used_by": [
       "un-014"
     ]
   },
   "srm/examination/XVII-result_passing_board_meeting": {
     "chars": 1171,
-    "sha256": "5e21620f3748ee72683f9b440d9142ed599f336eb3d932ca2e18a9d8c78a7803",
+    "sha256": "24f60a9877fd3973dbf137c5061782860bed8a905c944aeecac31f15473e3c20",
     "used_by": [
       "fp-010"
     ]
   },
   "srm/residence/17.0-hostel_representatives": {
     "chars": 447,
-    "sha256": "b2a824db51b4ddcd99d4c08be63f9f2497eb144e85535fe68497e0c5a73cbe87",
+    "sha256": "fd017a968b731e9f5774b2441b20d307e71e3535e83f8bb90a82b302ff11c9c9",
     "used_by": [
       "fp-008",
       "num-009"
@@ -145,28 +145,28 @@
   },
   "srm/residence/23.0-noise_pollution": {
     "chars": 351,
-    "sha256": "2a3402b059cc43e607cec3039639f003ad8fa3e4dcaf6194577743d16dc0e2ea",
+    "sha256": "0c81247378ac449936d893c9476839df8a87458ccafbdc14669c0fbe20c40fb1",
     "used_by": [
       "neg-012"
     ]
   },
   "srm/residence/26.0-medical_assistance": {
     "chars": 754,
-    "sha256": "1245990c57b64b1a692f4732b7f29cfd1d0a30ccd95cd98e3cd3b1db2c193c00",
+    "sha256": "2d0b7cf5dcd86aeb59688a7fadcaf985dcced03b8a8c688ede07c5b6753f3206",
     "used_by": [
       "num-010"
     ]
   },
   "srm/residence/entry_exit_to_from_hostels": {
-    "chars": 380,
-    "sha256": "d0f58d8c7c77f8541ad4a88d043a8c7e6322c61029911081debac68a12934861",
+    "chars": 383,
+    "sha256": "81925ec54f352d950cfb3122f6e16ae7f242e6b612e0108a7172334c87b2f068",
     "used_by": [
       "neg-011"
     ]
   },
   "srm/residence/guest_accommodation": {
     "chars": 608,
-    "sha256": "8817f81277f9da7a8edcb16dfa65920d7461d0d24ba3b8c0667a2ce2e37ef871",
+    "sha256": "d760286aad626592bea4d5d602831cc8671fc342f4e270d2ac39c1f30238dcd9",
     "used_by": [
       "fp-011",
       "neg-005",
@@ -175,23 +175,23 @@
       "xpol-004"
     ]
   },
-  "srm/residence/ragging-2": {
-    "chars": 8947,
-    "sha256": "436056a2f9db8bf6a77420cd2d9f81380a6d0f19341b7ed3949506c02f3a3ba2",
+  "srm/residence/ragging": {
+    "chars": 1058,
+    "sha256": "c5e2039c364e9f8f3d64a6c9651bc32667c878ce3a96e89c5e5fb50ec98c6bc4",
     "used_by": [
       "fp-007"
     ]
   },
   "srm/residence/refund_of_hostel_fees": {
     "chars": 124,
-    "sha256": "1e062615e2962ed087a411f3074dd38e3107e6c5cdb8ebbee7d9939d4314164d",
+    "sha256": "386ac0bf1dc89a0d0e4b2a50d6b823f38674d425fdd14fe33c0d7585728247f7",
     "used_by": [
       "neg-007"
     ]
   },
-  "srm/residence/visitors_to_the_hostels-2": {
-    "chars": 1042,
-    "sha256": "076e15ed924b715b73c917545aa50bc7eb5d716e99c0d4a90774221725f9bd4c",
+  "srm/residence/visitors_to_the_hostels": {
+    "chars": 1063,
+    "sha256": "32d57d0c06e37f7407f276d77617d4955838359deda2a741357b690f9ba75c2f",
     "used_by": [
       "fp-004",
       "neg-001",
@@ -199,9 +199,18 @@
       "neg-006"
     ]
   },
+  "srm/scholarship/1-based_on_cuet_common_university_entrance": {
+    "chars": 945,
+    "sha256": "daa5c36dd003d52ad196a4ddf5ba1a7ef742887f5470a9b31f7fc889c9208e37",
+    "used_by": [
+      "num-016",
+      "xpol-001",
+      "xpol-005"
+    ]
+  },
   "srm/scholarship/1-based_on_cuet_pg_common_university_entra": {
     "chars": 953,
-    "sha256": "01e17c067ea1df05e84e19136501bd11d5c4dffa51fe3b4317c07b6d81df25a5",
+    "sha256": "ebb49aaba807fbf27a740cf72da307d5fe03998fe719c18f868f14fae364b5c4",
     "used_by": [
       "num-016",
       "xpol-001",
@@ -209,8 +218,8 @@
     ]
   },
   "srm/scholarship/14-faculty_of_medicine_and_health_sciences": {
-    "chars": 2588,
-    "sha256": "66b8306996db0e712d62c7ef5a418885ea534cf8003ac74f405eaa7be1c27fd9",
+    "chars": 2746,
+    "sha256": "231c6aaa8905064944dba4dbb8da4331465a7b858c36b5b9c39b117146486db8",
     "used_by": [
       "num-016",
       "xpol-005"
@@ -218,7 +227,7 @@
   },
   "srm/scholarship/15-faculty_of_management": {
     "chars": 1107,
-    "sha256": "8fc6fc179b8748e0808960c0ac849f8ab50215be7ca038f975ba5171a4e872a9",
+    "sha256": "4ec6820f1c5acf2dc4dfc06c04e6253a07c0ea069ebb26e3fc342ca8c1c25cc1",
     "used_by": [
       "num-016",
       "xpol-005"
@@ -226,7 +235,7 @@
   },
   "srm/scholarship/16-school_of_law": {
     "chars": 1067,
-    "sha256": "5374f70dfadc1892e0a5294c708e79afb1d444f3e07dd0dc4acc83968a0a34ed",
+    "sha256": "c42643bcd416ff3346f1560b8b12186aa76a9d5c20f3043c919a3f3a2dea6474",
     "used_by": [
       "num-016",
       "xpol-001",
@@ -234,8 +243,8 @@
     ]
   },
   "srm/scholarship/17-faculty_of_science_and_humanities": {
-    "chars": 1059,
-    "sha256": "5b9e217a24b41e6bad9d83227e2c65969e046ba1943eaa1d80e2d42568e0481b",
+    "chars": 56,
+    "sha256": "9b67092cae16f38810462bff78792a4e406cd455429546c6f6b1efb67b640da9",
     "used_by": [
       "num-016",
       "xpol-001",
@@ -244,7 +253,7 @@
   },
   "srm/scholarship/2-clat_score": {
     "chars": 544,
-    "sha256": "9d29b577bcd349b5e189755266b63de466b35347ca7e2e6559439235e6dcc580",
+    "sha256": "7b2ebe239a19aa23631dea8136f4a39345ccafe7dfbbb5a443432757471e22a2",
     "used_by": [
       "num-016",
       "xpol-001",
@@ -252,15 +261,15 @@
     ]
   },
   "srm/scholarship/2-diversity_scholarship": {
-    "chars": 2979,
-    "sha256": "f873e90e758f76437138a49eacffb6d77d7987aa8715112411930fb4413413d7",
+    "chars": 3310,
+    "sha256": "3cb9d947bbed0cb323c14bd0a6f34591f0ce56d7fd0f1e4e2f3bb9713e77ea5e",
     "used_by": [
       "un-010"
     ]
   },
   "srm/scholarship/3-mat_score": {
     "chars": 250,
-    "sha256": "2ecba54c9cc4646213b37426ca7c0b88f2e419a6198a42795b51b261f4fa07b9",
+    "sha256": "30f0eaedd485d677d713f5e1eb7a0be4a549ba4199eca2a94939f5dc1127e113",
     "used_by": [
       "num-016",
       "xpol-005"
@@ -268,7 +277,7 @@
   },
   "srm/scholarship/3-sat_score": {
     "chars": 548,
-    "sha256": "c4be10979f2f8c6fb14943a7e2173bf6900c8e70b1d262cc151739368fd2abd7",
+    "sha256": "ab878dd5f888086cd28b392489ef6ee4734602a8770ae1cc7fe96d5635a88eb4",
     "used_by": [
       "num-016",
       "xpol-001",
@@ -276,8 +285,8 @@
     ]
   },
   "srm/scholarship/4-diversity_scholarships": {
-    "chars": 2037,
-    "sha256": "2c26e787e76943828482c9f12844e4735a8d7f0ab556d4160470eb3e64c72e1b",
+    "chars": 2197,
+    "sha256": "24c7cbfa7062dc3d37407b80b7ef55e6b382ceeb2381b2521345f47ee1418dc0",
     "used_by": [
       "num-016",
       "xpol-001",
@@ -285,8 +294,17 @@
     ]
   },
   "srm/scholarship/4-nmat_score": {
-    "chars": 2289,
-    "sha256": "3f949e9722b276bf1c897ccb03271b9e24ef8ee340c64f629affa950e0994c3e",
+    "chars": 325,
+    "sha256": "0664fec5ad576431c2a475b511c5bf3f0793d66c1d104dca1d3af0f643301d23",
+    "used_by": [
+      "num-016",
+      "xpol-001",
+      "xpol-005"
+    ]
+  },
+  "srm/scholarship/5-diversity_scholarships": {
+    "chars": 2103,
+    "sha256": "e813a7e0956be9f0e5b28bbc034ef31402cf5a71e84f50b19592da5e81850b46",
     "used_by": [
       "num-016",
       "xpol-001",

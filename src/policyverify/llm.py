@@ -117,9 +117,9 @@ def log_exchange(prompt: str, reply: str, model: str) -> Path | None:
 
     Set POLICYVERIFY_LOG_PROMPTS=1 (or to a directory) and every call to the
     model is written to data/logs/prompts/ as a plain text file: exactly what
-    the model was shown - instructions, passages, summaries - and exactly
-    what it said back. This is the way to answer "what did the LLM actually
-    receive?" for any question, without guessing from the code.
+    the model was shown - instructions, passages - and exactly what it said
+    back. This is the way to answer "what did the LLM actually receive?" for
+    any question, without guessing from the code.
     """
     target = os.environ.get(PROMPT_LOG_ENV, "").strip()
     if not target or target == "0":

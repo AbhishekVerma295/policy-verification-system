@@ -28,17 +28,24 @@ chunking:
   # Split on headings, so each chunk is a whole section and a citation like
   # "4.2" points at something real. These limits are only a fallback for
   # sections that are unusually long or short.
-  max_chars: 800
+  # 2026-11-20: back to 1800/150 from the 800/120 tried on 19 Nov. Measured
+  # on the tuning split: no clear difference between the two sizes, and all
+  # reported results were measured with 1800.
+  max_chars: 1800
   min_chars: 120
-  overlap_chars: 120
+  overlap_chars: 150
   # One short summary per section, carried by every chunk of that section,
   # so a small window keeps the context of the section around it. It helps
   # search and is shown to the model as context. It is never used to verify
   # a claim. Summaries are cached in data/processed/section_summaries.json.
-  summaries: true
+  # 2026-11-20: OFF. Measured on the tuning split, summaries attached to
+  # every passage cost 6-12 points of accuracy: all passages of a section
+  # look alike to search, so the exact rule (e.g. R 8.2, the pass mark)
+  # dropped out of the top 6. Code kept; switch on to experiment.
+  summaries: false
   summary_max_chars: 400
   summary_input_chars: 12000
-  summary_in_prompt: true
+  summary_in_prompt: false
 
 retrieval:
   top_k: 6
@@ -48,15 +55,15 @@ retrieval:
   # (parent, warden, hosteller...) gets  min(cap, weight * idf)  added to
   # its similarity for ordering only. The similarity used for abstention
   # is unchanged. Weights (idf) are computed from the corpus at build time.
-  entity_boost: true
+  # 2026-11-20: OFF - measured slightly harmful on the tuning split.
+  entity_boost: false
   entity_boost_weight: 0.1
   entity_boost_cap: 0.05
   # Audience filter: each section is labelled at index time with who it is
   # for (student, parent_visitor, staff), each question by a word list, and
   # retrieval keeps only chunks for the question's audience.
-  # OFF for now: qwen2.5:3b labelled every section "student", even the
-  # convocation procedure (checked 2026-11-20), so the labels cannot be
-  # trusted to filter with. Re-enable after re-checking them.
+  # 2026-11-20: OFF - no measurable effect (only 2 of 454 chunks were
+  # labelled parent/visitor, so it almost never filtered anything).
   audience_filter: false
   # Re-rank the best 20 passages with the cross-encoder (relevance section)
   # before taking top_k. Each passage then has a 0-1 relevance probability.
@@ -65,14 +72,15 @@ retrieval:
 
 llm:
   backend: ollama
-  # Start on 4b: it is faster to iterate with and leaves plenty of VRAM spare.
-  # Move to qwen3:8b once the pipeline works end to end.
-  model: qwen3:4b
-  # Near-0 (greedy) with a fixed seed: the same question gives the same answer
-  # every time. Required for debugging and evaluation - not a style choice.
-  temperature: 0.001
-  # Fixed so that any sampling left at temperature 0.001 is repeatable.
-  seed: 42
+  # 2026-11-20: default changed to qwen3.5:9b (chosen by the student). Measured
+  # on the tuning split: 0% hallucination and every unanswerable question
+  # declined, but more answerable questions declined (9 of 26 vs 4 of 26) and
+  # about 1.5x slower than qwen3:4b. Backup: qwen3:4b - set
+  # POLICYVERIFY_LLM_MODEL=qwen3:4b, or change this line back.
+  model: qwen3.5:9b
+  # 0 means the same question gives the same answer every time. Required for
+  # debugging and evaluation - not a style choice.
+  temperature: 0.0
   # Generous: with no GPU a normal answer takes over a minute.
   timeout_seconds: 300
   # Cap on reply length, so a runaway generation cannot hang a question.
@@ -90,6 +98,11 @@ nli:
 verification:
   numeric_exact_match: true
   fail_on_missing_citation: true
+  # 2026-11-20: table-row check (verify/table.py). Supports a claim the NLI
+  # model missed when exactly ONE table row holds its numbers (or a range
+  # containing them), words and names. Never refutes. Measured: tuning
+  # unchanged, no new false accepts, fresh 49 +2 points.
+  table_row_check: true
 
 abstention:
   # Tune these on the TUNING half of the adversarial set in Phase 6.

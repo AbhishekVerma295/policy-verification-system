@@ -45,6 +45,15 @@ WHEN TWO CITED SECTIONS DISAGREE
     withheld true scholarship claims as "conflicts" once tables were stored
     one row per line (see nli.NLIResult.conflict_strength).
 
+TABLE ROWS GET THEIR OWN CHECK (added 2026-11-20)
+    The NLI model misreads table rows: it cannot see that 90% lies in "85 to
+    94%", it reads a neighbouring row as a contradiction, and it does not
+    read "Tuition Fee: 25%" as a statement. When it does not support a claim
+    (or the numeric guard vetoes it), verify/table.py looks for the ONE row
+    the claim describes. That check can grant support but never refute, and
+    it is skipped when a cited prose passage contradicts the claim at the
+    conflict threshold.
+
 THE SECTION HEADING IS PART OF THE PREMISE
     The first chunk of a section is checked with its own heading in front
     (premise_with_heading), because some sections only say who they apply
@@ -67,6 +76,7 @@ from policyverify.verify.citation import CitationCheck, check_citations
 from policyverify.verify.nli import NLIChecker, NLIResult, is_table_row
 from policyverify.verify.numeric import check_numbers
 from policyverify.verify.polarity import flip_negation, has_negation, polarity_undecided
+from policyverify.verify.table import match_table_row
 
 
 @dataclass
@@ -395,6 +405,16 @@ def verify_claim(
             ),
         )
 
+    # --- table-row check: can grant support the model missed --------------
+    # Only when the model did not support the claim, or the numeric guard
+    # vetoed it ("90%" is not written in "85 to 94%"). Never against a
+    # written rule: a strong prose contradiction in any cited passage keeps
+    # the usual verdict.
+    if (not supported or not numeric.ok) and config.verification.table_row_check:
+        table_verdict = _table_verdict(claim, evidence_chunks, scored, checks, chunk_ids, config)
+        if table_verdict is not None:
+            return table_verdict
+
     if not supported and best_contra.result.max_contradiction >= threshold:
         checks.evidence_text = best_contra.result.max_contradiction_text or None
         checks.evidence_chunk_id = best_contra.chunk_id
@@ -461,6 +481,54 @@ def verify_claim(
         explanation=(
             "The cited policy text neither clearly supports nor contradicts "
             f"this claim (support confidence {best.entailment:.2f})."
+        ),
+    )
+
+
+def _table_verdict(
+    claim: Claim,
+    evidence_chunks: list,
+    scored: list[_Scored],
+    checks: CheckResults,
+    chunk_ids: list[str],
+    config: Config,
+) -> ClaimVerdict | None:
+    """SUPPORTED from the table-row check (verify/table.py), or None.
+
+    None when no single row matches, or when a cited passage's PROSE
+    contradicts the claim at the conflict threshold - a rule written in
+    words is never outvoted by a table row.
+    """
+    prose_against = max((s.result.conflict_strength for s in scored), default=0.0)
+    if prose_against >= config.nli.conflict_threshold:
+        return None
+    match = match_table_row(
+        claim.text,
+        [chunk.text for chunk in evidence_chunks],
+        min_coverage=config.verification.table_row_min_coverage,
+    )
+    if match is None:
+        return None
+    source = next((c.chunk_id for c in evidence_chunks if match.row in c.text), None)
+    checks = checks.model_copy(
+        update={
+            "numeric_ok": True,
+            "numeric_detail": match.detail,
+            "citation_supports": True,
+            "evidence_text": match.row,
+            "evidence_chunk_id": source,
+            "table_row": True,
+        }
+    )
+    return ClaimVerdict(
+        claim=claim,
+        status=VerdictStatus.SUPPORTED,
+        score=config.verification.table_row_score,
+        evidence_chunk_ids=chunk_ids,
+        checks=checks,
+        explanation=(
+            f"This claim matches one row of a table in the cited policy text: "
+            f"{_quote(match.row)} - {match.detail}."
         ),
     )
 

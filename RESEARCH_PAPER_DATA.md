@@ -10,6 +10,25 @@ otherwise. Ranges in square brackets are 95% Wilson confidence intervals. The
 test sets are small, so the intervals are wide; please quote them with the
 headline figures.
 
+> **Update, 20 November 2026: development work, not final results.** The
+> results below remain the final "version 1" results (16 Nov). Since then,
+> on local uncommitted code:
+>
+> - a data audit found and fixed table data lost at ingestion (grade points, attendance codes, class bands, warden contacts) and missed headings;
+> - the Scholarship Categories PDF was added as a 7th document;
+> - the teammate's 19–20 Nov retrieval changes were measured and switched off (section summaries cost 6–12 points on the tuning split).
+>
+> Development numbers (tuning 75.8%, 3.0% hallucination; fresh 49: 83.7%,
+> 2.0%) are in `STUDY_GUIDE.md` 11.1 and `PROJECT_STATUS.md` 0.0. The
+> repaired system will be tested once on the unused 50-question set.
+>
+> **One held-out label changed:** `num-011` (Run B) now expects attendance
+> code "9". Its old label was written from text in which ingestion had
+> deleted the codes. Run B's numbers do **not** change, because the system
+> declined that question (`false_abstention` either way).
+>
+> The Word copy of this file was not regenerated.
+
 ---
 
 ## 1. Final experimental results

@@ -270,40 +270,12 @@ def _mentions(value: str, text: str) -> bool:
     )
 
 
-def join_pieces(texts: list[str], max_overlap: int = 600) -> str:
-    """Rejoin the chunks of one section into its text, removing the overlap.
-
-    Consecutive chunks of an oversized section repeat a tail of the previous
-    chunk (chunk.py adds it so a rule on a boundary is not lost). Joining
-    them as they are counts that tail twice, so the "same" section text
-    would change length and hash whenever the chunk size changed - measured:
-    reducing chunks from 1800 to 800 characters made 18 unchanged sections
-    look edited. The overlap is the longest start of each chunk that is also
-    the end of the text so far.
-    """
-    if not texts:
-        return ""
-    out = texts[0]
-    for piece in texts[1:]:
-        limit = min(len(out), len(piece), max_overlap)
-        overlap = next(
-            (k for k in range(limit, 0, -1) if out.endswith(piece[:k])), 0
-        )
-        out = f"{out}\n{piece[overlap:].lstrip()}"
-    return out
-
-
-def normalise_text(text: str) -> str:
-    """Whitespace-insensitive form, so re-flowing a section is not a change."""
-    return " ".join(text.split())
-
-
 def _citation_text(store, citation_id: str, cache: dict[str, str | None]) -> str | None:
     """All the text of one cited section, or None if it cannot be read."""
     if citation_id not in cache:
         try:
             chunks = store.get_by_citation(citation_id)
-            cache[citation_id] = join_pieces([c.text for c in chunks]) if chunks else None
+            cache[citation_id] = "\n".join(c.text for c in chunks) if chunks else None
         except Exception:
             cache[citation_id] = None
     return cache[citation_id]
@@ -413,12 +385,9 @@ def fingerprint_citations(items: list[EvalItem], store) -> dict[str, dict]:
         text = _citation_text(store, citation, cache)
         if text is None:
             continue
-        # Hashed in whitespace-normalised form: chunking re-flows whitespace
-        # at window boundaries, which is not a change to what the policy says.
-        flat = normalise_text(text)
         out[citation] = {
-            "sha256": hashlib.sha256(flat.encode("utf-8")).hexdigest(),
-            "chars": len(flat),
+            "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+            "chars": len(text),
             "used_by": sorted(i.id for i in items if citation in i.expected_citations),
         }
     return out

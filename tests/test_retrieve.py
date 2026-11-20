@@ -433,6 +433,8 @@ def test_retrieve_applies_the_entity_boost_on_the_embedding_only_path():
         {"parent": 1.0, "hosteller": 0.6},
     )
     config = _config(hybrid=False)
+    # Switched on here: config.yaml has it off since 2026-11-20.
+    config.retrieval.entity_boost = True
     results = retrieve("How long may a parent stay?", config=config, store=store)
     assert [r.chunk.citation_id for r in results] == [B, A]
     assert results[0].score == 0.69, "similarity is never changed by the boost"
@@ -451,7 +453,9 @@ def test_entity_boost_reorders_the_embedding_side_before_the_hybrid_merge():
     )
     store = _HybridStore([first, second], {first.chunk_id: 0.71, second.chunk_id: 0.69})
     store.read_manifest = lambda: SimpleNamespace(entity_weights={"parent": 1.0})
-    results = retrieve("Can a parent stay?", k=2, config=_config(pool=2), store=store)
+    config = _config(pool=2)
+    config.retrieval.entity_boost = True  # off in config.yaml since 2026-11-20
+    results = retrieve("Can a parent stay?", k=2, config=config, store=store)
     assert [r.chunk.chunk_id for r in results] == [second.chunk_id, first.chunk_id]
     assert results[0].boost == 0.05 and results[0].score == 0.69
 

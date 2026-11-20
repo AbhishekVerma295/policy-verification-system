@@ -11,18 +11,28 @@ each fix exists).
 
 from __future__ import annotations
 
+import pymupdf
+
 from policyverify.ingest.extract import (
-    TABLE_CELL_SEPARATOR,
-    _strip_repeated_lines,
+    _page_furniture,
+    _pdf_table_lines,
+    _PdfTable,
+    _prepare_pdf_tables,
+    _strip_page_furniture,
     extract_html,
+    extract_pdf,
+    row_line,
 )
 from policyverify.ingest.normalize import (
     _is_numbered_heading,
     _is_roman_heading,
     build_document,
     join_lone_roman_numerals,
+    join_lone_section_numbers,
+    join_wrapped_caps_headings,
     promote_inline_headings,
     split_into_sections,
+    split_regulation_headings,
 )
 from policyverify.schema import PolicyType, SourceFormat
 
@@ -198,35 +208,67 @@ def test_table_rows_stay_in_the_section_that_introduces_them_and_are_never_headi
     assert not any("percentile" in key for key in by_key)
 
 
-def test_extract_html_leaves_tables_with_merged_cells_as_they_were():
-    """The code of conduct's consequence cell spans several misconduct rows;
-    guessing which row it belongs to is not safe, so the table is left flat."""
+def test_extract_html_spreads_a_merged_cell_over_every_row_it_covers():
+    """The code of conduct's consequence cell spans several misconduct rows.
+    rowspan says exactly which rows, so each row gets it (2026-11-20; these
+    tables used to be left flat, with consequences between the misconducts)."""
     html = """<html><body><main><table>
-      <tr><td>MISCONDUCT</td><td>CONSEQUENCE</td></tr>
+      <tr><td colspan="2"><strong>LEVEL – 2</strong></td></tr>
+      <tr><td><strong>MISCONDUCT</strong></td><td><strong>CONSEQUENCE</strong></td></tr>
       <tr><td>1. Misuse of ID cards.</td><td rowspan="2">Five days academic suspension</td></tr>
       <tr><td>2. Any complaint of misconduct.</td></tr>
     </table></main></body></html>"""
-    text = extract_html(html.encode())
-    assert TABLE_CELL_SEPARATOR not in text
-    assert text.splitlines() == [
-        "MISCONDUCT",
-        "CONSEQUENCE",
-        "1. Misuse of ID cards.",
-        "Five days academic suspension",
-        "2. Any complaint of misconduct.",
+    assert extract_html(html.encode()).splitlines() == [
+        "LEVEL – 2",
+        "LEVEL – 2 | MISCONDUCT: 1. Misuse of ID cards. | CONSEQUENCE: Five days academic suspension.",
+        "LEVEL – 2 | MISCONDUCT: 2. Any complaint of misconduct. | CONSEQUENCE: Five days academic suspension.",
     ]
 
 
-def test_extract_html_leaves_tables_without_a_clear_header_as_they_were():
+def test_merged_table_title_row_becomes_a_section_heading():
+    """"LEVEL – 1" ... "LEVEL – 6" each start a section, so a consequence is
+    cited as code_of_conduct/level_2 - not "consequence-2"."""
+    html = """<html><body><main><p>Intro text.</p><table>
+      <tr><td colspan="2"><strong>LEVEL – 2</strong></td></tr>
+      <tr><td><strong>MISCONDUCT</strong></td><td><strong>CONSEQUENCE</strong></td></tr>
+      <tr><td>1. Misuse of ID cards.</td><td>Five days academic suspension</td></tr>
+      <tr><td>2. Forgery.</td><td>Rustication</td></tr>
+    </table></main></body></html>"""
+    sections = split_into_sections("4. PUNISHMENTS\nSome text.\n" + extract_html(html.encode()), "Code")
+    assert [s.section_key() for s in sections] == ["4-punishments", "level_2"]
+
+
+def test_extract_html_multi_row_header_names_each_column_by_its_inner_levels():
+    """The Employee Ward Scholarship header is three rows deep. Each value is
+    named by the two innermost header levels, so "20 years above" is tied to
+    "100%" - flat, the two were in separate columns of text."""
+    html = """<html><body><main><table>
+      <tr><td rowspan="3"><strong>Sub Category</strong></td>
+          <td colspan="3"><strong>Prerequisites-Years of Service</strong></td></tr>
+      <tr><td rowspan="2"><strong>Staff</strong></td>
+          <td colspan="2"><strong>Concession Amount in Tuition Fee</strong></td></tr>
+      <tr><td><strong>100%</strong></td><td><strong>75%</strong></td></tr>
+      <tr><td>Availing EWS for the first time</td><td>Teaching staff</td>
+          <td>20 years above</td><td>&gt; 15 &lt; 20 yrs</td></tr>
+    </table></main></body></html>"""
+    line = extract_html(html.encode()).splitlines()[-1]
+    assert "Concession Amount in Tuition Fee - 100%: 20 years above" in line
+    assert "Concession Amount in Tuition Fee - 75%: > 15 < 20 yrs" in line
+    assert "Prerequisites-Years of Service - Staff: Teaching staff" in line
+
+
+def test_extract_html_keeps_each_row_of_a_headerless_table_together():
     """A two-column list with no header row (the examination policy's robe
-    colours) has no column names to attach to each value."""
+    colours) has no column names, but each row stays on one line so a colour
+    is never separated from the person who wears it."""
     html = """<html><body><main><table>
       <tr><td>The Chancellor</td><td>Velvet (Blue with gold border)</td></tr>
       <tr><td>The Registrar</td><td>Velvet (Maroon)</td></tr>
     </table></main></body></html>"""
-    text = extract_html(html.encode())
-    assert TABLE_CELL_SEPARATOR not in text
-    assert "The Chancellor\nVelvet (Blue with gold border)" in text
+    assert extract_html(html.encode()).splitlines() == [
+        "The Chancellor | Velvet (Blue with gold border).",
+        "The Registrar | Velvet (Maroon).",
+    ]
 
 
 def test_extract_html_table_with_th_header_and_generic_label_above():
@@ -249,44 +291,158 @@ def test_extract_html_table_with_th_header_and_generic_label_above():
 
 
 # ---------------------------------------------------------------------------
-# _strip_repeated_lines - the PDF running-header fix
+# PDFs: page furniture and tables (rewritten 2026-11-20)
 # ---------------------------------------------------------------------------
 
 
-def test_strip_repeated_lines_removes_running_header():
+def _page(*lines: str, table: tuple[str, ...] = ()) -> list[tuple[str, bool]]:
+    return [(ln, False) for ln in lines] + [(ln, True) for ln in table]
+
+
+def test_page_furniture_is_a_line_at_a_page_edge_on_several_pages():
     """Modelled on a real failure: 'SRM INSTITUTE OF SCIENCE AND TECHNOLOGY'
-    repeating once per page in a PDF was being mistaken for a section
-    heading downstream. A line appearing 3+ times is page furniture."""
-    text = "\n".join(
-        [
-            "SRM INSTITUTE OF SCIENCE AND TECHNOLOGY",
-            "Real content on page 1.",
-            "SRM INSTITUTE OF SCIENCE AND TECHNOLOGY",
-            "Real content on page 2.",
-            "SRM INSTITUTE OF SCIENCE AND TECHNOLOGY",
-            "Real content on page 3.",
-        ]
-    )
-    cleaned = _strip_repeated_lines(text, min_repeats=3)
+    repeating once per page was being mistaken for a section heading."""
+    pages = [
+        _page("SRM INSTITUTE OF SCIENCE AND TECHNOLOGY", f"Real content on page {i}.", "more", "more", "end")
+        for i in range(1, 4)
+    ]
+    furniture = _page_furniture(pages)
+    cleaned = "\n".join(_strip_page_furniture(pages, furniture))
     assert "SRM INSTITUTE OF SCIENCE AND TECHNOLOGY" not in cleaned
     assert "Real content on page 1." in cleaned
     assert "Real content on page 3." in cleaned
 
 
-def test_strip_repeated_lines_keeps_lines_below_threshold():
-    """A line repeated only twice is not confidently boilerplate - keep it."""
-    text = "Heading\nOnly twice\nbody text\nOnly twice"
-    cleaned = _strip_repeated_lines(text, min_repeats=3)
-    assert "Only twice" in cleaned
+def test_repeated_lines_in_the_middle_of_pages_are_kept():
+    """The real failure the old filter caused: any short line seen 3+ times
+    was deleted, wherever it was - every grade point ("10", "9", ...),
+    attendance codes "9" and "8", "First Class", every "%". Only lines at a
+    page's top or bottom are candidates now."""
+    pages = [
+        _page("Header A", "Header B", "Header C", "First Class", "9", "%", "body", "body2", "Footer x", "Footer y", "Footer z")
+        for _ in range(4)
+    ]
+    cleaned = _strip_page_furniture(pages, _page_furniture(pages))
+    assert cleaned.count("First Class") == 4
+    assert cleaned.count("9") == 4
+    assert cleaned.count("%") == 4
+    assert "Header A" not in cleaned
 
 
-def test_strip_repeated_lines_ignores_long_lines():
-    """A long line repeating is very unlikely to be a header/footer and more
-    likely a real (if oddly duplicated) sentence - the length cap protects it."""
-    long_line = "This is a genuinely long sentence that happens to repeat. " * 2
-    text = "\n".join([long_line] * 4)
-    cleaned = _strip_repeated_lines(text, min_repeats=3, max_len=50)
-    assert long_line.strip() in cleaned
+def test_page_number_is_removed_only_at_the_page_edge():
+    pages = [_page("Some text.", "7", "More text.", "18")]
+    assert _strip_page_furniture(pages, set()) == ["Some text.", "7", "More text."]
+
+
+def test_table_rows_are_never_page_furniture():
+    rows = ("Code: H.",)
+    pages = [_page("a", "b", table=rows) for _ in range(4)]
+    cleaned = _strip_page_furniture(pages, _page_furniture(pages))
+    assert cleaned.count("Code: H.") == 4
+
+
+def _table(rows, filled=None):
+    return _PdfTable((0, 0, 1, 1), rows, filled or [[c or "" for c in r] for r in rows])
+
+
+def test_pdf_table_rows_become_self_contained_lines():
+    """The attendance-code table of R 7.2: each band now says its code."""
+    t = _table([["Attendance rounded to", "Code"], ["95% and above", "H"], ["85 to 94%", "9"]])
+    _prepare_pdf_tables([t])
+    assert _pdf_table_lines(t, "") == [
+        "Attendance rounded to: 95% and above | Code: H.",
+        "Attendance rounded to: 85 to 94% | Code: 9.",
+    ]
+
+
+def test_pdf_table_continued_on_the_next_page_keeps_its_header():
+    """The warden table runs onto the next page: no header there, and a
+    fragment row holding only the '.in' a page break cut off an address."""
+    first = _table(
+        [
+            ["S.No.", "Hostel Name", "Warden Mail ID", "CUG"],
+            ["19", "Meenakshi", "warden.meenakshi.ktr@srmist.edu", "8056016617"],
+        ]
+    )
+    second = _table([["", "", ".in", ""], ["20", "Kalpana", "warden.k@srmist.edu.in", "8056016618"]])
+    _prepare_pdf_tables([first, second])
+    assert _pdf_table_lines(first, "") == [
+        "Hostel Name: Meenakshi | Warden Mail ID: warden.meenakshi.ktr@srmist.edu.in | CUG: 8056016617."
+    ]
+    assert _pdf_table_lines(second, "") == [
+        "Hostel Name: Kalpana | Warden Mail ID: warden.k@srmist.edu.in | CUG: 8056016618."
+    ]
+
+
+def test_pdf_table_of_contents_is_dropped():
+    rows = [["No", "Regulations", "Page No"]] + [[f"R {i}", f"Rule {i}", str(i)] for i in range(1, 8)]
+    t = _table(rows)
+    _prepare_pdf_tables([t])
+    assert _pdf_table_lines(t, "") == []
+
+
+def test_pdf_blank_template_is_written_as_its_column_names_once():
+    """Bloom's-level assessment templates: '%' and '-' to be filled in. The
+    only information is the weightage in the column names."""
+    rows = [
+        ["Level", "CLA-1 (45%)", "CLA-2 (15%)"],
+        ["Level 1", "%", "-"],
+        ["Level 2", "%", "-"],
+    ]
+    t = _table(rows)
+    _prepare_pdf_tables([t])
+    assert _pdf_table_lines(t, "") == ["Level | CLA-1 (45%) | CLA-2 (15%)."]
+
+
+def test_pdf_numbered_categories_each_start_a_section():
+    """Scholarship Categories PDF: "VIII | Employee Ward Scholarship | ..."
+    rows get a "VIII. Employee Ward Scholarship" heading line, once."""
+    rows = [
+        ["Sl. No", "Category", "Tuition Fee"],
+        ["VIII", "Employee Ward Scholarship", "100%"],
+        ["VIII", "Employee Ward Scholarship", "75%"],
+        ["IX", "Alumni Scholarship", "25%"],
+    ]
+    t = _table(rows)
+    _prepare_pdf_tables([t])
+    lines = _pdf_table_lines(t, "")
+    assert lines == [
+        "VIII. Employee Ward Scholarship",
+        "Category: Employee Ward Scholarship | Tuition Fee: 100%.",
+        "Category: Employee Ward Scholarship | Tuition Fee: 75%.",
+        "IX. Alumni Scholarship",
+        "Category: Alumni Scholarship | Tuition Fee: 25%.",
+    ]
+    keys = [s.section_key() for s in split_into_sections("\n".join(lines), "Categories")]
+    assert keys == ["VIII-employee_ward_scholarship", "IX-alumni_scholarship"]
+
+
+def test_row_line_writes_a_cell_spread_over_two_columns_once():
+    assert row_line("", ["Category", "Category", "Fee"], ["Merit", "Merit", "100%"]) == (
+        "Category: Merit | Fee: 100%."
+    )
+
+
+def test_extract_pdf_reads_a_real_ruled_table_row_by_row():
+    """End to end on a PDF built here: a ruled table, read by pymupdf's
+    table finder, comes out one row per line."""
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 60), "R 7.2 Attendance Percentage & Code:")
+    xs, ys = [72, 250, 400], [80, 100, 120, 140]
+    cells = [["Attendance rounded to", "Code"], ["95% and above", "H"], ["85 to 94%", "9"]]
+    for y in ys:
+        page.draw_line((xs[0], y), (xs[-1], y))
+    for x in xs:
+        page.draw_line((x, ys[0]), (x, ys[-1]))
+    for r, row in enumerate(cells):
+        for c, text in enumerate(row):
+            page.insert_text((xs[c] + 4, ys[r] + 14), text, fontsize=9)
+    raw = doc.tobytes()
+    doc.close()
+    lines = extract_pdf(raw).splitlines()
+    # The short line just above the table becomes its title.
+    assert "R 7.2 Attendance Percentage & Code | Attendance rounded to: 85 to 94% | Code: 9." in lines
 
 
 # ---------------------------------------------------------------------------
@@ -549,6 +705,80 @@ def test_table_row_lines_are_never_headings_or_promoted():
     assert promote_inline_headings(banded) == banded
 
 
+def test_tight_numbered_heading_without_a_space():
+    """"8.Employee ward scholarship (EWS)": no space after the dot on SRM's
+    scholarship page. EWS and Alumni used to be cited as part of section 7."""
+    assert _is_numbered_heading("8.Employee ward scholarship (EWS)") == (
+        "8",
+        "Employee ward scholarship (EWS)",
+    )
+    assert _is_numbered_heading("9.Alumni Scholarship") == ("9", "Alumni Scholarship")
+    # A decimal or a sentence is still not a heading.
+    assert _is_numbered_heading("8.5 marks are awarded") is None
+    assert _is_numbered_heading("2.All examinations undertaken by the student shall be cancelled and recorded.") is None
+
+
+def test_regulation_headings_are_split_out_whatever_their_case():
+    """12 regulations were missed: no colon, a long title, mostly lower case,
+    or "R7.1" with no space."""
+    text = "\n".join(
+        [
+            "R 2.2 Category of Courses",
+            "R 3.1 Course Registration for a semester",
+            "R7.1 Attendance Definition: It is the physical presence of a student.",
+            "R 1.3  SRM Joint Engineering Entrance Examination - UG (SRMJEEE - UG):  SRMJEEE (UG) is a test.",
+        ]
+    )
+    out = split_regulation_headings(text).splitlines()
+    assert out == [
+        "2.2 Category of Courses:",
+        "3.1 Course Registration for a semester:",
+        "7.1 Attendance Definition:",
+        "It is the physical presence of a student.",
+        "1.3 SRM Joint Engineering Entrance Examination - UG (SRMJEEE - UG):",
+        "SRMJEEE (UG) is a test.",
+    ]
+    sections = split_into_sections(text + "\nBody.", "Regulations")
+    # 2.2 and 3.1 have no body in this snippet (the next line is a heading).
+    assert [s.number for s in sections] == ["7.1", "1.3"]
+
+
+def test_lone_section_number_joins_its_title():
+    """Hostel rules: "16.0" then "GENERAL (Discipline)" - all of General
+    (Discipline) used to be folded into Ragging."""
+    text = "15.0\nRAGGING\nRagging is an offence.\n16.0\nGENERAL (Discipline)\n16.1 Be polite."
+    assert "16.0 GENERAL (Discipline)" in join_lone_section_numbers(text).splitlines()
+    # "15.0" is left alone: RAGGING is found as a heading already.
+    assert "15.0" in join_lone_section_numbers(text).splitlines()
+
+
+def test_wrapped_caps_heading_is_joined():
+    text = "3. SRMIST STUDENT CONDUCT EXPECTATIONS AS AN INDIVIDUAL\nOR AS A GROUP:\nDO'S"
+    assert join_wrapped_caps_headings(text).splitlines()[0] == (
+        "3. SRMIST STUDENT CONDUCT EXPECTATIONS AS AN INDIVIDUAL OR AS A GROUP:"
+    )
+
+
+def test_document_key_names_a_second_document_of_the_same_type():
+    """The Scholarship Categories PDF sits beside the scholarship web page:
+    its own key keeps its document ID and citations apart."""
+    doc = build_document(
+        university="uni_a",
+        university_name="University A",
+        policy_type=PolicyType.SCHOLARSHIP,
+        title="Scholarship Categories",
+        source_url="https://example.edu/cat.pdf",
+        source_format=SourceFormat.PDF,
+        retrieved_at=__import__("datetime").date(2026, 11, 20),
+        raw_bytes=b"x",
+        text="I. Founder's Scholarship\nTuition Fee: 100%.\nII. Merit Scholarship\nTuition Fee: 100%.",
+        key="scholarship_categories",
+    )
+    assert doc.doc_id == "uni_a/scholarship_categories"
+    assert doc.policy_type == PolicyType.SCHOLARSHIP
+    assert str(doc.citations()[0]) == "uni_a/scholarship_categories/I-founder_s_scholarship"
+
+
 def test_build_document_produces_a_valid_document():
     from datetime import date
 
@@ -628,36 +858,6 @@ def test_a_pdf_table_becomes_one_line_per_row_with_its_headers():
     assert text.index("as follows") < text.index("95% and above") < text.index("after the table")
 
 
-def test_a_cell_merged_down_is_copied_into_the_rows_it_spans():
-    from policyverify.ingest.extract import _pdf_table_lines
-
-    class _Row:
-        def __init__(self, cells):
-            self.cells = cells
-
-    class _Table:
-        def __init__(self, rows):
-            self.rows = [_Row(r) for r in rows]
-
-    # Cells are bounding boxes; one word sits in each box except the merged one.
-    boxes = [[(0, r * 10, 50, r * 10 + 10), (50, r * 10, 100, r * 10 + 10)] for r in range(3)]
-    boxes[2][0] = None  # merged down from row 1
-    words = [
-        (5, 2, 20, 8, "Category", 0, 0, 0), (55, 2, 70, 8, "Class", 0, 0, 1),
-        (5, 12, 20, 18, "Regular", 0, 1, 0), (55, 12, 70, 18, "First", 0, 1, 1),
-        (55, 22, 70, 28, "Second", 0, 2, 0),
-    ]
-    lines = _pdf_table_lines(_Table(boxes), words)
-    assert lines == ["Category: Regular | Class: First.", "Category: Regular | Class: Second."]
-
-
-def test_contents_pages_and_tables_without_a_header_are_left_alone():
-    from policyverify.ingest.extract import extract_pdf
-
-    toc = extract_pdf(_pdf_with_table([["Description", "Page"], ["Admission", "6"]]))
-    assert " | " not in toc
-    headerless = extract_pdf(_pdf_with_table([["", "Code"], ["95% and above", "H"]]))
-    assert " | " not in headerless
 
 
 def test_rendering_a_table_does_not_change_which_lines_count_as_page_furniture():
