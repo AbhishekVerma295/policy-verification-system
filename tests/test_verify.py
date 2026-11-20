@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from policyverify.config import load_config
 from policyverify.schema import (
     CheckResults,
@@ -778,3 +780,50 @@ def test_old_check_results_json_without_the_new_fields_still_loads():
     assert verdict.checks.evidence_text is None
     assert verdict.checks.conflict is False
     assert CheckResults.model_validate(old["checks"]).exact_quote is False
+
+
+# ---------------------------------------------------------------------------
+# Numbers written differently in claim and evidence (found 2026-11-20 by
+# probing the checker with phrasings from the SRM corpus)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "claim, evidence",
+    [
+        ("Students need 75 percent attendance.", "at least 75% in individual courses"),
+        ("Students need 75 per cent attendance.", "at least 75% in individual courses"),
+        # The scholarship table writes the word; a claim writes the sign.
+        ("A 15% waiver is given for 95% and above.",
+         "Percentage: 95 Percentage and Above | Benefit: 15% Tuition Fee Waiver."),
+        ("The ambulance is available 24/7.", "Ambulance is available on campus 24 hours"),
+        ("Condonation cannot exceed ten percent.", "the condonation cannot exceed 10%."),
+        ("Up to twenty-five percent leave is allowed.", "which can add up to 25%."),
+    ],
+)
+def test_the_same_number_written_two_ways_matches(claim, evidence):
+    from policyverify.verify.numeric import check_numbers
+
+    assert check_numbers(claim, [evidence]).ok
+
+
+@pytest.mark.parametrize(
+    "claim, evidence",
+    [
+        ("Parents must inform the office three days before.", "at least 7 days before"),
+        ("Condonation can go up to fifteen percent.", "cannot exceed 10%"),
+    ],
+)
+def test_a_wrong_number_written_as_a_word_is_caught(claim, evidence):
+    from policyverify.verify.numeric import check_numbers
+
+    assert not check_numbers(claim, [evidence]).ok
+
+
+def test_number_words_without_a_unit_are_not_numbers():
+    """'one of the following' must not become the number 1."""
+    from policyverify.verify.numeric import check_numbers
+
+    result = check_numbers("Students in one of the following categories qualify.",
+                           ["categories of candidates are eligible"])
+    assert result.ok and result.claim_numbers == []

@@ -54,16 +54,21 @@ retrieval:
   # Audience filter: each section is labelled at index time with who it is
   # for (student, parent_visitor, staff), each question by a word list, and
   # retrieval keeps only chunks for the question's audience.
-  audience_filter: true
+  # OFF for now: qwen2.5:3b labelled every section "student", even the
+  # convocation procedure (checked 2026-11-20), so the labels cannot be
+  # trusted to filter with. Re-enable after re-checking them.
+  audience_filter: false
 
 llm:
   backend: ollama
   # Start on 4b: it is faster to iterate with and leaves plenty of VRAM spare.
   # Move to qwen3:8b once the pipeline works end to end.
   model: qwen3:4b
-  # 0 means the same question gives the same answer every time. Required for
-  # debugging and evaluation - not a style choice.
-  temperature: 0.0
+  # Near-0 (greedy) with a fixed seed: the same question gives the same answer
+  # every time. Required for debugging and evaluation - not a style choice.
+  temperature: 0.001
+  # Fixed so that any sampling left at temperature 0.001 is repeatable.
+  seed: 42
   # Generous: with no GPU a normal answer takes over a minute.
   timeout_seconds: 300
   # Cap on reply length, so a runaway generation cannot hang a question.

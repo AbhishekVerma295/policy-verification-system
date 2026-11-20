@@ -1,0 +1,146 @@
+{
+  "srm/academic_integrity/4-paraphrasing_plagiarism_intellectual_the": {
+    "chars": 320,
+    "sha256": "ff6245d09292b4aca6017b4b5c81f1f6f736bacb7b60ac40e1937c48b90f3fb8",
+    "used_by": [
+      "sc-021"
+    ]
+  },
+  "srm/attendance/3.5-summer_semester": {
+    "chars": 2932,
+    "sha256": "93ae8643dd41a5b3bdcc1bc010cd3da54e6c01b4be54c7855e3daa5678f34d01",
+    "used_by": [
+      "sc-005"
+    ]
+  },
+  "srm/attendance/7.3-minimum_attendance": {
+    "chars": 1259,
+    "sha256": "36002cf73f4c3c240c470ad97ba2aa457be77071d55d6149b81f884e44b84db9",
+    "used_by": [
+      "sc-001",
+      "sc-002"
+    ]
+  },
+  "srm/attendance/7.4-attendance_shortage_and_examination": {
+    "chars": 514,
+    "sha256": "94e26a1d4a273ff66a98902c0928ca6e645191b5b3038b4e6ac5f136129c5c2d",
+    "used_by": [
+      "sc-001"
+    ]
+  },
+  "srm/attendance/7.5-condonation_of_attendance": {
+    "chars": 573,
+    "sha256": "5e52c68439a37275db9ae74bedec0ab019fc736af5d9ebc297dd4efefc678289",
+    "used_by": [
+      "sc-003"
+    ]
+  },
+  "srm/attendance/8.2-method_of_awarding_letter_grades": {
+    "chars": 623,
+    "sha256": "f935c510006e7f52afa74dcf8b9eb94baef14dbfad471717c7125ecb21b34129",
+    "used_by": [
+      "sc-004"
+    ]
+  },
+  "srm/code_of_conduct/7-appeal_process": {
+    "chars": 615,
+    "sha256": "13335922f98e1249906f412353e4e4303bf90b74cdb57d69053c877004c1df00",
+    "used_by": [
+      "sc-020"
+    ]
+  },
+  "srm/examination/IX-conduct_of_theory_examinations": {
+    "chars": 10395,
+    "sha256": "396926cef76cc9a67c4ab74c6a369e176248cf67309f9d2b08f0f219cee768af",
+    "used_by": [
+      "sc-006"
+    ]
+  },
+  "srm/examination/XX-grievances": {
+    "chars": 3225,
+    "sha256": "9f43a46652e5a7ba9ca6f868cd95dad61c8520386e9f1d8a31f5891a4f5d7ea7",
+    "used_by": [
+      "sc-007"
+    ]
+  },
+  "srm/residence/25.0-summer_winter_break": {
+    "chars": 503,
+    "sha256": "3a4d19d379c4bd658d7b78caa44f4945a409a4bf3e871ed1255f39555661e6c6",
+    "used_by": [
+      "sc-015"
+    ]
+  },
+  "srm/residence/26.0-medical_assistance": {
+    "chars": 754,
+    "sha256": "1245990c57b64b1a692f4732b7f29cfd1d0a30ccd95cd98e3cd3b1db2c193c00",
+    "used_by": [
+      "sc-013"
+    ]
+  },
+  "srm/residence/guest_accommodation": {
+    "chars": 608,
+    "sha256": "8817f81277f9da7a8edcb16dfa65920d7461d0d24ba3b8c0667a2ce2e37ef871",
+    "used_by": [
+      "sc-008",
+      "sc-009"
+    ]
+  },
+  "srm/residence/other_charges": {
+    "chars": 1004,
+    "sha256": "389639e9e43967ed59c922d284f733e0edce05965194d48b676507da688e007c",
+    "used_by": [
+      "sc-012"
+    ]
+  },
+  "srm/residence/ragging-2": {
+    "chars": 8947,
+    "sha256": "436056a2f9db8bf6a77420cd2d9f81380a6d0f19341b7ed3949506c02f3a3ba2",
+    "used_by": [
+      "sc-014"
+    ]
+  },
+  "srm/residence/refund_of_hostel_fees": {
+    "chars": 124,
+    "sha256": "1e062615e2962ed087a411f3074dd38e3107e6c5cdb8ebbee7d9939d4314164d",
+    "used_by": [
+      "sc-016"
+    ]
+  },
+  "srm/residence/visitors_to_the_hostels-2": {
+    "chars": 1042,
+    "sha256": "076e15ed924b715b73c917545aa50bc7eb5d716e99c0d4a90774221725f9bd4c",
+    "used_by": [
+      "sc-009",
+      "sc-010",
+      "sc-011"
+    ]
+  },
+  "srm/scholarship/12-defence_scholarship": {
+    "chars": 974,
+    "sha256": "05a465e46eaa0d3ade91f06c99f06c8cea117558d1b134d5a420a355d9ca039a",
+    "used_by": [
+      "sc-018"
+    ]
+  },
+  "srm/scholarship/2-plus_2_board_examination_performance": {
+    "chars": 302,
+    "sha256": "a540525d9464cd9d1bd112c68a69485012e79fb571593d3fc3b492f24349a55e",
+    "used_by": [
+      "sc-017"
+    ]
+  },
+  "srm/scholarship/2-plus_2_board_examination_performance-2": {
+    "chars": 301,
+    "sha256": "eaee893c44b89ca4ce06e8d10320a04566ef32278358820ebd4b4a14d9297b84",
+    "used_by": [
+      "sc-017"
+    ]
+  },
+  "srm/scholarship/2-srm_merit_scholarship": {
+    "chars": 1117,
+    "sha256": "c843255f9b5f0954a80da9a959b4ab969b39117ad3bd8025fed59b6768f54441",
+    "used_by": [
+      "sc-019"
+    ]
+  }
+}

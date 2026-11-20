@@ -255,6 +255,8 @@ def parse_draft(raw: str) -> DraftAnswer | None:
 # number or a chunk marker: "srm/residence/guest_accommodation:9.1",
 # "...#0", "... (9.1)", "...,".
 _CITATION_SUFFIX_START = (":", "#", " ", "(", ",", ";")
+# The passage label from the prompt, copied in front of an ID.
+_CITATION_LABEL_RE = re.compile(r"^\[?\s*citation[_ ]?id\s*[:=]\s*", re.IGNORECASE)
 
 
 def resolve_citation(citation: str, known: set[str]) -> str | None:
@@ -271,8 +273,13 @@ def resolve_citation(citation: str, known: set[str]) -> str | None:
     so an invented section ID still resolves to nothing and is still
     reported as fabricated. The longest match wins, so "x/y/2-a" is never
     mistaken for "x/y/2".
+
+    A label copied from the prompt in FRONT of the ID is removed too: the
+    passages are headed "[citation_id: ...]", and measured on the evaluation
+    set the model wrote "citation_id: srm/scholarship/3-mat_score" for three
+    true claims, which all lost their citation and were removed.
     """
-    citation = citation.strip()
+    citation = _CITATION_LABEL_RE.sub("", citation.strip()).strip(" []")
     if citation in known:
         return citation
     matches = [

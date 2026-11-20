@@ -52,16 +52,6 @@ STYLES = {
 # A supported claim withheld because it does not answer the question asked.
 OFF_TOPIC_STYLE = ("TRUE BUT OFF TOPIC", "#6b7280", "rgba(107, 114, 128, 0.10)")
 
-# What the page says while each pipeline stage runs.
-STAGE_MESSAGES = {
-    "retrieve": "1/4  Searching the policy documents for relevant passages ...",
-    "generate": "2/4  The language model is writing claims from those passages "
-    "(the slow step: 1-2 minutes without a GPU) ...",
-    "verify": "3/4  Checking every claim against the policy text it cites, "
-    "and that it answers the question ...",
-    "decide": "4/4  Keeping verified claims, removing the rest ...",
-}
-
 # Example questions. Each one was answered correctly, with every claim
 # verified, in the evaluation run - and generation runs at temperature 0, so
 # the same question gives the same answer. They cover four different policy
@@ -286,22 +276,96 @@ def draw_declined(answer: Answer) -> None:
     )
 
 
+def number_sources(verdicts: list[ClaimVerdict]) -> tuple[list[list[int]], list[str]]:
+    """Give each cited section a number, in order of first citation.
+
+    Returns, per claim, the numbers of the sections it cites, and the
+    section IDs in numbered order.
+    """
+    order: list[str] = []
+    per_claim: list[list[int]] = []
+    for verdict in verdicts:
+        refs = []
+        for citation in verdict.claim.citation_ids:
+            if citation not in order:
+                order.append(citation)
+            refs.append(order.index(citation) + 1)
+        per_claim.append(refs)
+    return per_claim, order
+
+
+def draw_answer_summary(answer: Answer, store: VectorStore) -> None:
+    """The answer first: the verified statements as a list, with sources.
+
+    Nothing here is generated. Each line is a statement that passed
+    verification, in the order the model gave them, so this box cannot say
+    anything the checks below have not confirmed. The numbers point at the
+    sources listed underneath, each named by its section heading and linked
+    to the university's own page.
+    """
+    refs, sources = number_sources(answer.claims_kept)
+    lines = [
+        f"- {html.escape(v.claim.text)} "
+        + "".join(f"<sup>[{n}]</sup>" for n in r)
+        for v, r in zip(answer.claims_kept, refs, strict=True)
+    ]
+    with st.container(border=True):
+        st.markdown("##### :material/verified: Answer")
+        st.markdown("\n".join(lines), unsafe_allow_html=True)
+        st.caption("Sources")
+        for n, citation in enumerate(sources, start=1):
+            chunks = store.get_by_citation(citation)
+            if chunks:
+                c = chunks[0]
+                name = html.escape(c.section_path.split(" > ")[-1] or citation)
+                st.markdown(
+                    f"<small>[{n}] {name} &middot; {html.escape(c.policy_type.value)} "
+                    f"policy &middot; <a href='{html.escape(c.source_url)}'>source</a> "
+                    f"&middot; <code>{html.escape(citation)}</code></small>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(f"<small>[{n}] <code>{html.escape(citation)}</code></small>",
+                            unsafe_allow_html=True)
+
+        # Related sections from the section graph (graph.py): a reading aid,
+        # not part of the answer - nothing here has been checked against the
+        # question.
+        graph = store.section_graph() if hasattr(store, "section_graph") else None
+        related: list[dict] = []
+        if graph is not None:
+            seen = set(sources)
+            for citation in sources:
+                for edge in graph.related(citation, k=2, exclude=seen):
+                    seen.add(edge["citation"])
+                    related.append(edge)
+        if related:
+            st.caption("Related sections you may also want to read (not checked against your question)")
+            for edge in related[:4]:
+                st.markdown(
+                    f"<small>&bull; {html.escape(edge['title'])} &middot; "
+                    f"<code>{html.escape(edge['citation'])}</code> &middot; "
+                    f"<i>{html.escape(edge['why'])}</i></small>",
+                    unsafe_allow_html=True,
+                )
+
+
 def draw_answer(answer: Answer, passages: list, store: VectorStore) -> None:
     st.subheader(answer.question)
 
     if answer.abstained:
         draw_declined(answer)
     elif answer.claims_kept:
-        st.success(
-            f"**{len(answer.claims_kept)} verified claim(s).** Every statement below "
-            "was checked against the policy text it cites. Support runs from "
-            "0.00 to 1.00.",
-            icon=":material/verified:",
+        draw_answer_summary(answer, store)
+        if answer.reason:
+            st.info(answer.reason, icon=":material/info:")
+        st.markdown("##### How each statement was checked")
+        st.caption(
+            "Every statement above was checked against the policy text it cites. "
+            "Support runs from 0.00 to 1.00."
         )
         for i, verdict in enumerate(answer.claims_kept):
             draw_claim(verdict, store, key=f"kept-{i}")
-        if answer.reason:
-            st.info(answer.reason, icon=":material/info:")
 
     if answer.claims_removed:
         st.space("small")
@@ -429,10 +493,11 @@ if to_run:
     policy = None
     top_k = config.retrieval.top_k
     try:
-        with st.status("Working on your question ...", expanded=True) as status:
-            def show_stage(name: str) -> None:
-                status.write(STAGE_MESSAGES[name])
-
+        # A plain spinner that disappears when the answer is drawn. The
+        # step-by-step status panel it replaces stayed on the page after the
+        # answer, which users found cluttering; per-stage timings are still
+        # in the metrics row under each answer.
+        with st.spinner("Finding and checking the answer ..."):
             answer = answer_question(
                 to_run,
                 k=top_k,
@@ -441,17 +506,11 @@ if to_run:
                 store=store,
                 llm=llm,
                 nli=nli,
-                on_stage=show_stage,
             )
             # Same call the pipeline made, repeated so the passages can be
             # shown. Retrieval is deterministic, so these are the same ones.
             passages = retrieve(
                 to_run, k=top_k, policy_type=policy, config=config, store=store
-            )
-            status.update(
-                label=f"Done in {answer.timings.total_ms / 1000:.0f} seconds",
-                state="complete",
-                expanded=False,
             )
         st.session_state["result"] = (answer, passages)
     except (LLMError, GenerationError) as exc:
