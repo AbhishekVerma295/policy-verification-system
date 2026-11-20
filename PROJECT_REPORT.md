@@ -1,7 +1,23 @@
 # Hallucination and Citation Verifier for Policy Question Answering
 
 **Project report** — Policy Verification System for SRM Institute of Science and Technology policies
-**Status:** final, 20 November 2026 (code on `main`; final test run `run-20261120-165959`)
+**Status:** final, 20 November 2026 (tested version: git tag `v2-final-test`; final test run `run-20261120-165959`)
+
+> **Which version the results describe.** The final test results (99 questions, `run-20261120-165959`)
+> were measured on **version 2**, tagged **`v2-final-test`** in git (commit `4ba60a4`). After that, a
+> teammate's work (PR #6) was merged into `main`, making **version 3**. It adds:
+>
+> - a cross-encoder relevance check instead of the language-model yes/no;
+> - cross-encoder re-ranking of retrieved passages;
+> - situation answers (rule, consequence, exception);
+> - list answers, an answer composed from the verified facts, and a polarity check;
+> - the plagiarism-policy preamble kept at ingestion, which closes the `fb-29` gap.
+>
+> Version 3 has **not** been run on the final test. Its first two changes target exactly the main
+> weakness the test found (17 of 25 wrong declines came from the relevance check). Any later result for
+> version 3 on this test set would be a second use of the set and must be reported as such. To
+> reproduce the reported results: `git checkout v2-final-test`, then `python scripts/ingest.py --offline`
+> and `python scripts/build_index.py`.
 
 > **How to read this report.** Every number is **measured**, and the result file it comes from is
 > named beside it. Ranges in square brackets are 95% Wilson confidence intervals. Development numbers
