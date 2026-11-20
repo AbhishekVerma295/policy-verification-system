@@ -11,11 +11,14 @@ evaluation harness, not a unit test.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from policyverify.config import load_config
+from policyverify.entities import entity_boost, entity_weights, extract_entities
 from policyverify.indexing.bm25 import BM25Index
-from policyverify.retrieve import diversify, retrieve
+from policyverify.retrieve import diversify, rerank_by_entities, retrieve
 from policyverify.schema import Chunk, PolicyType, RetrievedChunk
 
 A = "srm/attendance/4.2-first_section"
@@ -318,3 +321,136 @@ def test_falls_back_to_embedding_search_for_a_search_only_store():
     results = retrieve("q", config=_config(hybrid=True), store=_SearchOnlyStore())
     assert [r.chunk.citation_id for r in results] == [A, B]
     assert [r.score for r in results] == [0.9, 0.8]
+
+
+# ---------------------------------------------------------------------------
+# Entity extraction and re-ranking
+# ---------------------------------------------------------------------------
+
+
+def test_extracts_who_a_question_is_for():
+    assert "parent" in extract_entities("How long may a parent stay in the hostel?")
+    assert "parent" in extract_entities("Can my local guardian visit?")
+    assert "day_scholar" in extract_entities("Can day scholars stay in the hostel as guests?")
+    assert "hosteller" in extract_entities("How many guests is each hosteller allowed?")
+    assert extract_entities("Are male visitors allowed in female hostels?") >= {
+        "male",
+        "female",
+        "visitor",
+    }
+
+
+def test_extraction_avoids_the_traps_found_in_the_corpus():
+    # "female" contains "male", "women" contains "men".
+    assert "male" not in extract_entities("Female students only.")
+    assert "male" not in extract_entities("Rules for women.")
+    # Examination policy: "Chief Guest" and "guest faculty" are not visitors.
+    assert "visitor" not in extract_entities("Greet the Chief Guest on arrival.")
+    assert "visitor" not in extract_entities("Guest faculty may invigilate.")
+    # UG/PG are only abbreviations in capitals.
+    assert "pg" in extract_entities("For PG, the scribe must be qualified.")
+    assert "pg" not in extract_entities("see pg 12")
+
+
+def test_weights_make_common_entities_worth_almost_nothing():
+    """Measured: "student" appears in most SRM chunks, "parent" in few."""
+    chunks = [{"student"}] * 18 + [{"student", "parent"}] + [{"warden"}]
+    w = entity_weights(chunks)
+    assert w["student"] < 0.1
+    assert w["parent"] == pytest.approx(1.0)
+    assert w["parent"] > w["student"]
+
+
+def test_boost_is_capped_and_uses_the_best_single_match():
+    weights = {"parent": 1.0, "visitor": 0.8, "student": 0.02}
+    assert entity_boost({"parent"}, {"parent"}, weights, weight=0.1, cap=0.05) == 0.05
+    assert entity_boost({"student"}, {"student"}, weights, weight=0.1, cap=0.05) == 0.002
+    # Matching more entities does not add up past the best one.
+    both = entity_boost({"parent", "visitor"}, {"parent", "visitor"}, weights, 0.02, 1.0)
+    assert both == 0.02
+    assert entity_boost({"parent"}, {"warden"}, weights, 0.1, 0.05) == 0.0
+
+
+def _tagged(citation: str, score: float, entities: list[str]) -> RetrievedChunk:
+    chunk = _chunk(citation).model_copy(update={"entities": entities})
+    return RetrievedChunk(chunk=chunk, score=score, rank=0)
+
+
+def test_rerank_promotes_a_near_tie_that_names_the_right_people():
+    weights = {"parent": 1.0, "hosteller": 0.6}
+    candidates = [
+        _tagged(A, 0.71, ["hosteller"]),  # topic match, wrong people
+        _tagged(B, 0.69, ["parent"]),  # what the question asked about
+    ]
+    out = rerank_by_entities(
+        "How long may a parent stay in the hostel?", candidates, weights, 0.1, 0.05
+    )
+    assert out[0].chunk.citation_id == B
+    assert out[0].boost == 0.05 and out[0].matched_entities == ["parent"]
+    # The similarity itself is untouched: abstention still reads it.
+    assert out[0].score == 0.69
+
+
+def test_rerank_cap_cannot_promote_a_clearly_worse_passage():
+    weights = {"parent": 1.0}
+    candidates = [_tagged(A, 0.80, []), _tagged(B, 0.60, ["parent"])]
+    out = rerank_by_entities("Can parents visit?", candidates, weights, 0.1, 0.05)
+    assert out[0].chunk.citation_id == A
+
+
+def test_rerank_is_a_no_op_without_entities_or_weights():
+    candidates = [_tagged(A, 0.7, ["parent"]), _tagged(B, 0.6, [])]
+    assert rerank_by_entities("What is the fee?", candidates, {"parent": 1.0}, 0.1, 0.05) == candidates
+    assert rerank_by_entities("Can parents visit?", candidates, {}, 0.1, 0.05) == candidates
+
+
+def test_diversify_keeps_the_entity_boost_fields():
+    boosted = _tagged(B, 0.69, ["parent"]).model_copy(
+        update={"boost": 0.05, "matched_entities": ["parent"]}
+    )
+    out = diversify([boosted, _tagged(A, 0.71, [])], k=2, max_per_citation=2)
+    assert [r.chunk.citation_id for r in out] == [B, A], "input order is kept"
+    assert out[0].boost == 0.05 and out[0].matched_entities == ["parent"]
+
+
+class _ManifestSearchStore:
+    """Embedding search only, plus an index manifest with entity weights."""
+
+    def __init__(self, candidates, weights):
+        self.candidates = candidates
+        self.weights = weights
+
+    def search(self, question, k=None, university=None, policy_type=None):
+        return list(self.candidates)
+
+    def read_manifest(self):
+        return SimpleNamespace(entity_weights=self.weights)
+
+
+def test_retrieve_applies_the_entity_boost_on_the_embedding_only_path():
+    store = _ManifestSearchStore(
+        [_tagged(A, 0.71, ["hosteller"]), _tagged(B, 0.69, ["parent"])],
+        {"parent": 1.0, "hosteller": 0.6},
+    )
+    config = _config(hybrid=False)
+    results = retrieve("How long may a parent stay?", config=config, store=store)
+    assert [r.chunk.citation_id for r in results] == [B, A]
+    assert results[0].score == 0.69, "similarity is never changed by the boost"
+
+    config.retrieval.entity_boost = False
+    results = retrieve("How long may a parent stay?", config=config, store=store)
+    assert [r.chunk.citation_id for r in results] == [A, B]
+
+
+def test_entity_boost_reorders_the_embedding_side_before_the_hybrid_merge():
+    """Neither chunk shares a word with the question, so the keyword side
+    finds nothing and the merged order is the (boosted) embedding order."""
+    first = _policy_chunk("rooms", "Rooms are booked ahead.")
+    second = _policy_chunk("deposit", "Rooms need a deposit.").model_copy(
+        update={"entities": ["parent"]}
+    )
+    store = _HybridStore([first, second], {first.chunk_id: 0.71, second.chunk_id: 0.69})
+    store.read_manifest = lambda: SimpleNamespace(entity_weights={"parent": 1.0})
+    results = retrieve("Can a parent stay?", k=2, config=_config(pool=2), store=store)
+    assert [r.chunk.chunk_id for r in results] == [second.chunk_id, first.chunk_id]
+    assert results[0].boost == 0.05 and results[0].score == 0.69

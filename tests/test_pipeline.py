@@ -53,6 +53,9 @@ class StubStore:
     def get_by_citation(self, citation_id):
         return [_chunk()] if citation_id == CITATION else []
 
+    def read_manifest(self):
+        return None  # no entity weights, so no re-ranking
+
 
 class StubNLI:
     def __init__(self, label: str = ENTAILMENT, entailment: float = 0.95):

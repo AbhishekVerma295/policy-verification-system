@@ -18,8 +18,8 @@ in here are worth understanding, because both are load-bearing.
    sentence telling you to rebuild.
 
 2. WHAT GETS EMBEDDED IS NOT WHAT GETS VERIFIED
-   The text we embed has the university, policy type and section heading
-   prepended. The text we store as the chunk's content does not.
+   The text we embed has the university, policy type, section heading and
+   section summary prepended. The text we store as the chunk's content does not.
 
    Those serve different jobs. For SEARCH, a passage reading "Students must
    attend at least 75% of classes" is ambiguous on its own - the heading is
@@ -43,11 +43,12 @@ in here are worth understanding, because both are load-bearing.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
 from policyverify.config import Config, get_config
+from policyverify.entities import decode_entities, entity_weights
 from policyverify.indexing.bm25 import BM25Index
 from policyverify.schema import Chunk, PolicyType, RetrievedChunk
 
@@ -71,6 +72,9 @@ class IndexManifest:
     document_count: int
     built_at: str
     chunking: dict
+    # IDF weight of each entity over this index's chunks. See entities.py.
+    # Empty for an index built before entities existed: no boost is applied.
+    entity_weights: dict[str, float] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -80,6 +84,7 @@ class IndexManifest:
             "document_count": self.document_count,
             "built_at": self.built_at,
             "chunking": self.chunking,
+            "entity_weights": self.entity_weights,
         }
 
     @classmethod
@@ -91,6 +96,7 @@ class IndexManifest:
             document_count=data["document_count"],
             built_at=data["built_at"],
             chunking=data.get("chunking", {}),
+            entity_weights=data.get("entity_weights", {}),
         )
 
 
@@ -101,10 +107,14 @@ def embedding_text(chunk: Chunk) -> str:
     See the note at the top of this module for why this differs from
     `chunk.text`.
     """
-    return (
-        f"{chunk.university_name} | {chunk.policy_type.value} | "
-        f"{chunk.section_path}\n{chunk.text}"
+    header = (
+        f"{chunk.university_name} | {chunk.policy_type.value} | {chunk.section_path}"
     )
+    # The section summary carries the context a small window loses: what the
+    # whole section is about and who it applies to. See summarize.py.
+    if chunk.summary:
+        header = f"{header}\nSection summary: {chunk.summary}"
+    return f"{header}\n{chunk.text}"
 
 
 def _chunk_from_row(chunk_id: str, text: str, meta: dict) -> Chunk:
@@ -119,7 +129,11 @@ def _chunk_from_row(chunk_id: str, text: str, meta: dict) -> Chunk:
         policy_type=PolicyType(meta["policy_type"]),
         section_path=meta["section_path"],
         source_url=meta["source_url"],
+        # Both absent in an index built before they existed.
+        summary=meta.get("summary", ""),
+        entities=sorted(decode_entities(meta.get("entities"))),
     )
+
 
 
 def _similarity_from_distance(distance: float) -> float:
@@ -289,6 +303,7 @@ class VectorStore:
             document_count=document_count,
             built_at=datetime.now(UTC).isoformat(timespec="seconds"),
             chunking=self.config.chunking.model_dump(),
+            entity_weights=entity_weights(set(c.entities) for c in chunks),
         )
         self.manifest_path.parent.mkdir(parents=True, exist_ok=True)
         self.manifest_path.write_text(
