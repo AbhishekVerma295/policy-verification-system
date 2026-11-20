@@ -71,10 +71,18 @@ def _default_relevance(store, llm: LLMBackend | None, config: Config) -> Relevan
         else None
     )
 
+    own_names: list[str] = []
+    if cross_encoder is not None and callable(getattr(store, "all_chunks", None)):
+        # The institution's own names, so "SRM ... will use the best software"
+        # is not mistaken for naming the software (relevance.names_something_new).
+        names = {c.university_name for c in store.all_chunks()}
+        names |= {c.university for c in store.all_chunks()}
+        own_names = sorted(names)
+
     def gate(question: str, verdicts: list[ClaimVerdict]) -> RelevanceReport:
         return assess_relevance(
             question, verdicts, llm=judge, similarity=similarity, config=config,
-            cross_encoder=cross_encoder,
+            cross_encoder=cross_encoder, own_names=own_names,
         )
 
     return gate

@@ -262,6 +262,52 @@ def judge_views(question: str) -> list[str]:
     return [question] if view == question else [question, view]
 
 
+# Questions whose answer IS a name: "Which software ...?", "Who is the
+# current Vice Chancellor?". "Who should I contact" is a procedure, not an
+# identity, so only "who is/are/was/were" counts.
+_NAME_QUESTION_RE = re.compile(
+    r"\bwhich\b|\bwho\s+(?:is|are|was|were)\b|\bname\s+of\b|\bwhat\s+is\s+the\s+name\b",
+    re.IGNORECASE,
+)
+# A proper name or acronym: a run of Capitalised words / ACRONYMS / words
+# with digits ("SRM Merit Scholarship", "SRMJEEE", "Turnitin", "COE").
+_NAME_RE = re.compile(r"\b(?:[A-Z][A-Za-z0-9&'.-]*)(?:\s+(?:of|and|for|the|[A-Z][A-Za-z0-9&'.-]*))*")
+_NAME_STOPWORDS = {"the", "a", "an", "of", "and", "for", "in", "on", "to", "is", "are"}
+
+
+def asks_for_a_name(question: str) -> bool:
+    return _NAME_QUESTION_RE.search(question) is not None
+
+
+def names_something_new(claim: str, question: str, own_names: list[str]) -> bool:
+    """Does the claim contain a name that is not the question's own words
+    and not the institution's own name?
+
+    The cross-encoder's one measured failure, in the benchmark and in the
+    evaluation: "Which plagiarism detection software does the university
+    use?" -> "SRM Institute of Science and Technology will use the best
+    tools / software to detect plagiarism", scored 0.997. The claim is about
+    the software and names none - the only name in it is the university's.
+    """
+    q_words = {w.lower() for w in re.findall(r"[A-Za-z0-9]+", question)}
+    own = {w.lower() for name in own_names for w in re.findall(r"[A-Za-z0-9]+", name)}
+    # The first word of a sentence is capitalised whatever it is.
+    body = re.sub(r"^\s*\S+", "", claim)
+    def is_own(word: str) -> bool:
+        # "SRMIST" and "SRM IST" are the university's own name too.
+        return word in own or any(len(o) >= 3 and word.startswith(o) for o in own)
+
+    for match in _NAME_RE.finditer(body):
+        words = [w.lower() for w in re.findall(r"[A-Za-z0-9]+", match.group(0))]
+        new = [
+            w for w in words
+            if w not in _NAME_STOPWORDS and w not in q_words and not is_own(w)
+        ]
+        if new:
+            return True
+    return False
+
+
 @lru_cache(maxsize=2)
 def cross_encoder_for(model_name: str, device: str = "cpu") -> CrossEncoderRelevance:
     """One shared instance per model, so the weights are loaded once."""
@@ -313,6 +359,7 @@ def assess_relevance(
     similarity: Similarity | None = None,
     config: Config | None = None,
     cross_encoder: Similarity | None = None,
+    own_names: list[str] | None = None,
 ) -> RelevanceReport:
     """Judge whether the supported claims answer `question`.
 
@@ -354,11 +401,15 @@ def assess_relevance(
             report.notes.append("cross-encoder unavailable: similarity and judge decided")
         if probs is not None:
             out = list(verdicts)
+            needs_name = asks_for_a_name(question)
             for k, i in enumerate(idx):
-                out[i] = _mark(
-                    verdicts[i], probs[k] >= cfg.cross_encoder_threshold, None,
-                    "cross_encoder", score=probs[k],
-                )
+                relevant = probs[k] >= cfg.cross_encoder_threshold
+                source = "cross_encoder"
+                if relevant and needs_name and not names_something_new(
+                    texts[k], question, own_names or []
+                ):
+                    relevant, source = False, "cross_encoder+name_check"
+                out[i] = _mark(verdicts[i], relevant, None, source, score=probs[k])
             report.verdicts = out
             return report
 

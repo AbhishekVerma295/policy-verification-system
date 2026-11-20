@@ -31,6 +31,33 @@ is run once at the end, for reporting.
 | # | Change | Accuracy | Halluc. | False abst. | Correct abst. | Citation acc. | Run |
 |---|---|---|---|---|---|---|---|
 | 0 | Baseline: re-ingested corpus, 800-char chunks, entity boost, hybrid search | 51.5% | 0.0% | 57.7% (15/26) | 100% (7/7) | 90.9% | `run-20261120-105410` |
+| 1 | + cross-encoder relevance judge, judge views, situation prompt, claim de-dup, citation-label fix, number-word fix, PDF tables | **66.7%** | 6.1% (2) | **30.8%** (8/26) | 85.7% (6/7) | 94.4% | `run-20261120-123500` |
+
+### Run 1, reviewed by hand
+
+The two items counted as hallucinations:
+
+- `num-006` "How long may a parent stay in the hostel as a guest?" - the kept
+  claim quotes the policy: "a short stay (one or two days only) ... intimate
+  the hostel office at least 7 days before". The answer is right and states
+  7 days in its true role (notice period); the scorer counts any answer
+  containing the forbidden string "7 days". **Not a hallucination on manual
+  review.** The scorer is left unchanged so rows stay comparable.
+- `un-011` "Which plagiarism detection software does the university use?" -
+  answered from "SRM ... will use the best tools / software to detect
+  plagiarism" (cross-encoder p = 0.997). **A real failure**, and the one the
+  judge comparison predicted: the claim mentions software and names none.
+  Fixed after this run by a name check (`names_something_new`): a "which X" /
+  "who is" question must be answered by a name that is neither the
+  question's own words nor the institution's name. Measured on the two
+  answerable name-questions in the sets (sc-013 is "who should I contact",
+  not a name question; sc-019's answer names the SRM Merit Scholarship).
+
+Remaining false abstentions (8): `xpol-003`, `xpol-007`, `xpol-009` (vague
+cross-policy questions), `neg-005` (the model wrote the wrong sentence from
+the right passage), `neg-009`, `fp-001`, `fp-005`, `fp-011` (false-premise
+questions, where the claim that corrects the premise scores low against the
+question as asked).
 
 ### What run 0 showed
 

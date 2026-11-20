@@ -382,3 +382,52 @@ def test_the_cross_encoder_takes_the_best_score_over_the_views():
     ce._model = _Model()
     [p] = ce.scores("i attended 74 classes out of 100, will i get detained?", ["claim"])
     assert p > 0.99
+
+
+# ---------------------------------------------------------------------------
+# Name questions: "which X" / "who is" must be answered by naming something
+# ---------------------------------------------------------------------------
+
+_OWN = ["SRM Institute of Science and Technology", "srm"]
+
+
+def test_naming_only_the_university_does_not_answer_which_software():
+    """Measured in the evaluation (un-011): answered from this claim, while
+    the documents never name the software."""
+    from policyverify.verify.relevance import asks_for_a_name, names_something_new
+
+    q = "Which plagiarism detection software does the university use?"
+    assert asks_for_a_name(q)
+    assert not names_something_new(
+        "SRM Institute of Science and Technology will use the best tools / software "
+        "to detect plagiarism.", q, _OWN)
+    assert not names_something_new("SRMIST uses the best software available.", q, _OWN)
+    assert names_something_new("The university uses Turnitin to detect plagiarism.", q, _OWN)
+
+
+def test_a_named_scholarship_answers_which_scholarship():
+    from policyverify.verify.relevance import names_something_new
+
+    q = "I got rank 300 in SRMJEEE. Which scholarship can I get?"
+    assert names_something_new(
+        "Candidates with SRMJEEE rank 101-500 can get the SRM Merit Scholarship.", q, _OWN)
+
+
+def test_who_should_i_contact_is_not_a_name_question():
+    from policyverify.verify.relevance import asks_for_a_name
+
+    assert not asks_for_a_name("I fell sick at 2 am. Who should I contact?")
+    assert asks_for_a_name("Who is the current Vice Chancellor?")
+
+
+def test_the_name_check_overrides_a_high_cross_encoder_score():
+    claim = _verdict("SRM Institute of Science and Technology will use the best tools / "
+                     "software to detect plagiarism.")
+    report = assess_relevance(
+        "Which plagiarism detection software does the university use?", [claim],
+        similarity=FakeSimilarity([0.75]), config=load_config(),
+        cross_encoder=FakeCrossEncoder({claim.claim.text: 0.997}), own_names=_OWN,
+    )
+    marked = report.verdicts[0]
+    assert marked.checks.relevant is False
+    assert marked.checks.relevance_source == "cross_encoder+name_check"
