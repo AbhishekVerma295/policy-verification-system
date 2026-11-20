@@ -336,14 +336,141 @@ def _is_bold(s, block: Tag) -> bool:
 
 
 def extract_pdf(raw: bytes) -> str:
-    """PDF bytes -> plain text, page by page, in order."""
+    """PDF bytes -> plain text, page by page, in order.
+
+    Pages with a simple table get it written out one row per line, exactly as
+    HTML tables are (see _pdf_page_text). Every other page is read with plain
+    get_text(), unchanged.
+    """
     doc = pymupdf.open(stream=raw, filetype="pdf")
     try:
-        pages = [page.get_text() for page in doc]
+        plain = [page.get_text() for page in doc]
+        pages = [_pdf_page_text(page) for page in doc]
     finally:
         doc.close()
-    text = _strip_repeated_lines("\n".join(pages))
+    # Which lines are page furniture is decided on the PLAIN text, exactly
+    # as before tables were rendered. Deciding it on the rendered text let a
+    # table change the counts: the hostel contacts table's serial numbers
+    # ("6", "7", ...) stopped counting towards the page numbers, those
+    # survived, and contents-page entries such as "Admission 6" became tiny
+    # sections that took the real sections' citation IDs
+    # (guest_accommodation became guest_accommodation-2).
+    text = _drop_lines("\n".join(pages), _repeated_lines("\n".join(plain)))
     return _clean_text(text)
+
+
+# Header words of a contents page. Its "table" is page numbers, not policy.
+_TOC_HEADER_RE = re.compile(r"\b(page|contents)\b", re.IGNORECASE)
+# Wider tables in these PDFs are multi-level assessment grids with merged
+# header cells; read row by row they come out as nonsense.
+_PDF_TABLE_MAX_COLS = 4
+
+
+def _pdf_cell_text(bbox, words) -> str | None:
+    """A cell's text, rebuilt from the page's words inside the cell's box.
+
+    PyMuPDF's own table text drops the spaces in these PDFs
+    ("Attendanceroundedto"), so the words are gathered by position instead
+    and joined in reading order.
+    """
+    if bbox is None:
+        return None
+    x0, y0, x1, y1 = bbox
+    inside = [
+        w for w in words
+        if x0 <= (w[0] + w[2]) / 2 <= x1 and y0 <= (w[1] + w[3]) / 2 <= y1
+    ]
+    inside.sort(key=lambda w: (w[5], w[6], w[7]))  # block, line, word
+    return " ".join(w[4] for w in inside).strip()
+
+
+def _pdf_table_lines(table, words) -> list[str]:
+    """Row lines for one PDF table, or [] to leave its text untouched.
+
+    The same contract as _table_rows_as_lines for HTML: only tables that
+    read unambiguously row by row are rewritten. A cell merged DOWN over
+    several rows (the "Category" column of the class/distinction tables)
+    arrives as None below its first row, and is filled from the row above,
+    which is what the merged cell means. Anything else merged, a header with
+    a gap, a contents page, or a wide grid is left as it was.
+    """
+    rows = [[_pdf_cell_text(c, words) for c in r.cells] for r in table.rows]
+    rows = [r for r in rows if any(r)]
+    if len(rows) < 2:
+        return []
+    header = rows[0]
+    width = len(header)
+    if not 2 <= width <= _PDF_TABLE_MAX_COLS or not all(header):
+        return []
+    if any(_TOC_HEADER_RE.search(h) for h in header):
+        return []
+    filled = []
+    for i, row in enumerate(rows[1:]):
+        if len(row) != width:
+            return []
+        out = []
+        for col, cell in enumerate(row):
+            if cell is None:
+                if i == 0 or col != 0:
+                    return []  # merged sideways, or nothing above to copy
+                cell = filled[-1][col]
+            out.append(cell)
+        filled.append(out)
+
+    lines = []
+    for row in filled:
+        pairs = [
+            f"{h}: {v}"
+            for h, v in zip(header, row, strict=True)
+            if v and not _is_serial_header(h)
+        ]
+        if len(pairs) < 2:
+            continue  # a blank or label-only row says nothing on its own
+        line = TABLE_CELL_SEPARATOR.join(pairs)
+        if line[-1] not in ".!?":
+            line += "."
+        lines.append(line)
+    return lines
+
+
+def _pdf_page_text(page) -> str:
+    """One page's text, with its simple tables rewritten as row lines.
+
+    A page with no renderable table is returned as plain get_text(), so
+    pages without tables come out exactly as before. On a page with one,
+    the text blocks inside the table's box are replaced, in place, by the
+    table's row lines.
+    """
+    try:
+        tables = page.find_tables().tables
+    except Exception:  # table detection is best effort; text never depends on it
+        tables = []
+    if not tables:
+        return page.get_text()
+    words = page.get_text("words")
+    rendered = [(t.bbox, lines) for t in tables if (lines := _pdf_table_lines(t, words))]
+    if not rendered:
+        return page.get_text()
+
+    def table_at(block) -> int | None:
+        cx, cy = (block[0] + block[2]) / 2, (block[1] + block[3]) / 2
+        for n, (bbox, _) in enumerate(rendered):
+            if bbox[0] <= cx <= bbox[2] and bbox[1] <= cy <= bbox[3]:
+                return n
+        return None
+
+    parts: list[str] = []
+    placed: set[int] = set()
+    for block in page.get_text("blocks"):
+        if block[6] != 0:
+            continue  # an image block
+        n = table_at(block)
+        if n is None:
+            parts.append(block[4])
+        elif n not in placed:
+            placed.add(n)
+            parts.append("\n".join(rendered[n][1]) + "\n")
+    return "".join(parts)
 
 
 def _strip_repeated_lines(text: str, min_repeats: int = 3, max_len: int = 100) -> str:
@@ -359,10 +486,17 @@ def _strip_repeated_lines(text: str, min_repeats: int = 3, max_len: int = 100) -
     content" - specific to PDFs, since page.get_text() concatenates pages
     with no marker showing where one page's header repeats the last one's.
     """
-    lines = text.splitlines()
-    counts = Counter(ln.strip() for ln in lines if ln.strip())
-    noisy = {line for line, n in counts.items() if n >= min_repeats and len(line) <= max_len}
-    return "\n".join(ln for ln in lines if ln.strip() not in noisy)
+    return _drop_lines(text, _repeated_lines(text, min_repeats, max_len))
+
+
+def _repeated_lines(text: str, min_repeats: int = 3, max_len: int = 100) -> set[str]:
+    """The short lines that repeat verbatim at least `min_repeats` times."""
+    counts = Counter(ln.strip() for ln in text.splitlines() if ln.strip())
+    return {line for line, n in counts.items() if n >= min_repeats and len(line) <= max_len}
+
+
+def _drop_lines(text: str, noisy: set[str]) -> str:
+    return "\n".join(ln for ln in text.splitlines() if ln.strip() not in noisy)
 
 
 def extract(raw: bytes, fmt: str) -> str:
