@@ -286,22 +286,96 @@ def draw_declined(answer: Answer) -> None:
     )
 
 
+def number_sources(verdicts: list[ClaimVerdict]) -> tuple[list[list[int]], list[str]]:
+    """Give each cited section a number, in order of first citation.
+
+    Returns, per claim, the numbers of the sections it cites, and the
+    section IDs in numbered order.
+    """
+    order: list[str] = []
+    per_claim: list[list[int]] = []
+    for verdict in verdicts:
+        refs = []
+        for citation in verdict.claim.citation_ids:
+            if citation not in order:
+                order.append(citation)
+            refs.append(order.index(citation) + 1)
+        per_claim.append(refs)
+    return per_claim, order
+
+
+def draw_answer_summary(answer: Answer, store: VectorStore) -> None:
+    """The answer first: the verified statements as a list, with sources.
+
+    Nothing here is generated. Each line is a statement that passed
+    verification, in the order the model gave them, so this box cannot say
+    anything the checks below have not confirmed. The numbers point at the
+    sources listed underneath, each named by its section heading and linked
+    to the university's own page.
+    """
+    refs, sources = number_sources(answer.claims_kept)
+    lines = [
+        f"- {html.escape(v.claim.text)} "
+        + "".join(f"<sup>[{n}]</sup>" for n in r)
+        for v, r in zip(answer.claims_kept, refs, strict=True)
+    ]
+    with st.container(border=True):
+        st.markdown("##### :material/verified: Answer")
+        st.markdown("\n".join(lines), unsafe_allow_html=True)
+        st.caption("Sources")
+        for n, citation in enumerate(sources, start=1):
+            chunks = store.get_by_citation(citation)
+            if chunks:
+                c = chunks[0]
+                name = html.escape(c.section_path.split(" > ")[-1] or citation)
+                st.markdown(
+                    f"<small>[{n}] {name} &middot; {html.escape(c.policy_type.value)} "
+                    f"policy &middot; <a href='{html.escape(c.source_url)}'>source</a> "
+                    f"&middot; <code>{html.escape(citation)}</code></small>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(f"<small>[{n}] <code>{html.escape(citation)}</code></small>",
+                            unsafe_allow_html=True)
+
+        # Related sections from the section graph (graph.py): a reading aid,
+        # not part of the answer - nothing here has been checked against the
+        # question.
+        graph = store.section_graph() if hasattr(store, "section_graph") else None
+        related: list[dict] = []
+        if graph is not None:
+            seen = set(sources)
+            for citation in sources:
+                for edge in graph.related(citation, k=2, exclude=seen):
+                    seen.add(edge["citation"])
+                    related.append(edge)
+        if related:
+            st.caption("Related sections you may also want to read (not checked against your question)")
+            for edge in related[:4]:
+                st.markdown(
+                    f"<small>&bull; {html.escape(edge['title'])} &middot; "
+                    f"<code>{html.escape(edge['citation'])}</code> &middot; "
+                    f"<i>{html.escape(edge['why'])}</i></small>",
+                    unsafe_allow_html=True,
+                )
+
+
 def draw_answer(answer: Answer, passages: list, store: VectorStore) -> None:
     st.subheader(answer.question)
 
     if answer.abstained:
         draw_declined(answer)
     elif answer.claims_kept:
-        st.success(
-            f"**{len(answer.claims_kept)} verified claim(s).** Every statement below "
-            "was checked against the policy text it cites. Support runs from "
-            "0.00 to 1.00.",
-            icon=":material/verified:",
+        draw_answer_summary(answer, store)
+        if answer.reason:
+            st.info(answer.reason, icon=":material/info:")
+        st.markdown("##### How each statement was checked")
+        st.caption(
+            "Every statement above was checked against the policy text it cites. "
+            "Support runs from 0.00 to 1.00."
         )
         for i, verdict in enumerate(answer.claims_kept):
             draw_claim(verdict, store, key=f"kept-{i}")
-        if answer.reason:
-            st.info(answer.reason, icon=":material/info:")
 
     if answer.claims_removed:
         st.space("small")
