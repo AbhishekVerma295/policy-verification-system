@@ -158,6 +158,7 @@ class BM25Index:
         k: int,
         university: str | None = None,
         policy_type: PolicyType | str | None = None,
+        audience: set[str] | None = None,
     ) -> list[tuple[Chunk, float]]:
         """The `k` best keyword matches, best first, as (chunk, bm25 score).
 
@@ -179,6 +180,10 @@ class BM25Index:
             if university and chunk.university != university:
                 continue
             if policy and chunk.policy_type.value != policy:
+                continue
+            # Same rule as the aud_* filter in VectorStore.search: a chunk
+            # with no audience labels is for everyone.
+            if audience and chunk.audience and not (set(chunk.audience) & audience):
                 continue
             hits.append((chunk, score))
         hits.sort(key=lambda pair: (-pair[1], pair[0].chunk_id))

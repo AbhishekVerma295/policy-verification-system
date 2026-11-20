@@ -152,6 +152,15 @@ class RetrievalConfig(BaseModel):
     # little to promote an off-topic passage.
     entity_boost_cap: float = 0.05
 
+    # Audience filter (see indexing/classify.py). Every section is labelled
+    # at index time with who it is FOR - student, parent_visitor, staff - and
+    # each question gets the same labels from a word list. Retrieval then
+    # only returns chunks for the question's audience: a student's question
+    # does not pull rules written for visitors or for staff. If that leaves
+    # fewer than top_k passages, the rest come from the unfiltered search.
+    # Has no effect on an index built before audience labels existed.
+    audience_filter: bool = True
+
 
 class LLMConfig(BaseModel):
     """Which language model writes the draft answer.

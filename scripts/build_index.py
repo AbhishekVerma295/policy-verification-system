@@ -18,23 +18,27 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from policyverify.config import get_config  # noqa: E402
 from policyverify.indexing import (  # noqa: E402
+    AudienceCache,
+    SectionClassifier,
     SectionSummarizer,
     SummaryCache,
     VectorStore,
     chunk_document,
 )
 from policyverify.llm import get_llm  # noqa: E402
-from policyverify.schema import Document  # noqa: E402
+from policyverify.schema import AUDIENCE_LABELS, Document  # noqa: E402
 
-# Lives beside the processed documents, outside the */*.json pattern that
+# Live beside the processed documents, outside the */*.json pattern that
 # load_documents() reads, and outside data/index, which a rebuild replaces.
 SUMMARY_CACHE_NAME = "section_summaries.json"
+AUDIENCE_CACHE_NAME = "section_audiences.json"
 
 # Questions used only for the post-build smoke test. Chosen to cover
 # different policy types so an obviously-broken index is visible immediately.
@@ -67,7 +71,8 @@ def main() -> int:
     parser.add_argument(
         "--offline-summaries",
         action="store_true",
-        help="do not call the LLM; summarise each section by its opening sentences",
+        help="do not call the LLM: summarise each section by its opening sentences "
+        "and tag it for every audience (so no audience filtering)",
     )
     args = parser.parse_args()
 
@@ -94,16 +99,32 @@ def main() -> int:
         source = "opening sentences" if llm is None else config.llm.model
         print(f"\n  section summaries: {source} ({len(cache)} cached)")
 
+    classifier = None
+    if config.retrieval.audience_filter:
+        audience_cache = AudienceCache(processed_dir / AUDIENCE_CACHE_NAME)
+        classifier = SectionClassifier(
+            None if args.offline_summaries else get_llm(config),
+            cache=audience_cache,
+            model_name=config.llm.model,
+            on_event=lambda msg: print(f"    {msg}", flush=True),
+        )
+        source = "everyone (offline)" if args.offline_summaries else config.llm.model
+        print(f"  section audiences: {source} ({len(audience_cache)} cached)")
+
     print("\n[2/3] chunking ...")
     all_chunks = []
     for doc in documents:
         chunks = chunk_document(
-            doc, summarize=summarizer.summarise if summarizer else None
+            doc,
+            summarize=summarizer.summarise if summarizer else None,
+            classify=classifier.classify if classifier else None,
         )
+        # Save after every document, so an interrupted build keeps the
+        # summaries and labels it already paid for.
         if summarizer:
-            # Save after every document, so an interrupted build keeps the
-            # summaries it already paid for.
             summarizer.cache.save()
+        if classifier:
+            classifier.cache.save()
         all_chunks.extend(chunks)
         dropped = len(doc.sections) - len({c.citation_id for c in chunks})
         note = f"  ({dropped} noise sections dropped)" if dropped > 0 else ""
@@ -124,6 +145,16 @@ def main() -> int:
             f"  summaries: {s['generated']} generated, {s['cached']} cached, "
             f"{s['fallback']} from opening sentences"
         )
+    if classifier:
+        s = classifier.stats
+        print(
+            f"  audiences: {s['classified']} classified, {s['cached']} cached, "
+            f"{s['fallback']} tagged for everyone"
+        )
+        counts = Counter(label for c in all_chunks for label in c.audience)
+        print("  chunks per audience: " + ", ".join(
+            f"{label} {counts.get(label, 0)}" for label in AUDIENCE_LABELS
+        ))
 
     print(f"\n[3/3] embedding with {config.embedding.model_name} on "
           f"{config.embedding.device} ...")

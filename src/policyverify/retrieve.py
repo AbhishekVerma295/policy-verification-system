@@ -63,6 +63,7 @@ from collections.abc import Callable, Sequence
 from policyverify.config import Config, get_config
 from policyverify.entities import entity_boost, extract_entities
 from policyverify.indexing import VectorStore
+from policyverify.indexing.classify import ALL_AUDIENCES, classify_query
 from policyverify.schema import PolicyType, RetrievedChunk
 
 
@@ -188,6 +189,30 @@ def _supports_hybrid(store) -> bool:
     )
 
 
+def _audience_kwargs(audience: set[str] | None) -> dict:
+    """`audience=` only when filtering, so a stand-in store whose search()
+    predates the audience filter keeps working when there is nothing to
+    filter on."""
+    return {"audience": audience} if audience else {}
+
+
+def query_audience(question: str, config: Config, store) -> set[str] | None:
+    """The audiences to filter this question's retrieval to, or None.
+
+    None - no filtering - when the filter is off, when the index was built
+    without audience labels (filtering on fields that do not exist would
+    match nothing), or when the question is for everyone anyway.
+    """
+    if not config.retrieval.audience_filter:
+        return None
+    read_manifest = getattr(store, "read_manifest", None)
+    manifest = read_manifest() if callable(read_manifest) else None
+    if manifest is None or not getattr(manifest, "audience_classified", False):
+        return None
+    audience = classify_query(question)
+    return None if audience >= ALL_AUDIENCES else audience
+
+
 def _hybrid_candidates(
     question: str,
     store: VectorStore,
@@ -196,11 +221,13 @@ def _hybrid_candidates(
     university: str | None,
     policy_type: PolicyType | str | None,
     rerank: Callable[[list[RetrievedChunk]], list[RetrievedChunk]] | None = None,
+    audience: set[str] | None = None,
 ) -> list[RetrievedChunk]:
     """Both searches, merged by RRF, best first, every `score` a cosine.
 
     `rerank` reorders the embedding results before the merge - the entity
     boost (see rerank_by_entities). The keyword ranking is left as it is.
+    `audience` restricts both searches to chunks for those readers.
     """
     query_vector = store.embed_query(question)
 
@@ -210,14 +237,19 @@ def _hybrid_candidates(
         university=university,
         policy_type=policy_type,
         query_embedding=query_vector,
+        **_audience_kwargs(audience),
     )
     if rerank is not None:
         dense = rerank(dense)
     # The same filters, applied the same way: they restrict which chunks are
     # eligible, so the keyword side can never bring back a passage from a
-    # university or policy the embedding side was told to exclude.
+    # university, policy or audience the embedding side was told to exclude.
     keyword = store.bm25_index().search(
-        question, k=pool, university=university, policy_type=policy_type
+        question,
+        k=pool,
+        university=university,
+        policy_type=policy_type,
+        **_audience_kwargs(audience),
     )
 
     by_id = {r.chunk.chunk_id: r for r in dense}
@@ -278,19 +310,36 @@ def retrieve(
             cap=cfg.entity_boost_cap,
         )
 
-    if cfg.hybrid_search and _supports_hybrid(store):
-        # Never pull fewer candidates than the embedding-only path would.
-        pool = max(cfg.hybrid_candidate_pool, oversampled)
-        candidates = _hybrid_candidates(
-            question, store, pool, cfg.rrf_k, university, policy_type, rerank
-        )
-    else:
-        candidates = rerank(
-            store.search(
-                question,
-                k=oversampled,
-                university=university,
-                policy_type=policy_type,
+    def search(audience: set[str] | None) -> list[RetrievedChunk]:
+        if cfg.hybrid_search and _supports_hybrid(store):
+            # Never pull fewer candidates than the embedding-only path would.
+            pool = max(cfg.hybrid_candidate_pool, oversampled)
+            candidates = _hybrid_candidates(
+                question, store, pool, cfg.rrf_k, university, policy_type, rerank,
+                audience,
             )
-        )
-    return diversify(candidates, top_k, cfg.max_chunks_per_citation)
+        else:
+            candidates = rerank(
+                store.search(
+                    question,
+                    k=oversampled,
+                    university=university,
+                    policy_type=policy_type,
+                    **_audience_kwargs(audience),
+                )
+            )
+        return diversify(candidates, top_k, cfg.max_chunks_per_citation)
+
+    audience = query_audience(question, config, store)
+    results = search(audience)
+    if audience is None or len(results) >= top_k:
+        return results
+
+    # The audience filter left fewer than top_k passages. Fill the remaining
+    # slots from the unfiltered search, after every filtered result: fewer
+    # passages is a worse failure than a passage for a different reader,
+    # which the verifier and the relevance gate still have to accept.
+    seen = {r.chunk.chunk_id for r in results}
+    extra = [r for r in search(None) if r.chunk.chunk_id not in seen]
+    merged = results + extra[: top_k - len(results)]
+    return [r.model_copy(update={"rank": i}) for i, r in enumerate(merged)]

@@ -170,12 +170,17 @@ def chunk_document(
     doc: Document,
     config: ChunkingConfig | None = None,
     summarize: Callable[[Section, str, str, str], str] | None = None,
+    classify: Callable[[Section, str, str, str], list[str]] | None = None,
 ) -> list[Chunk]:
     """Turn one Document into the chunks that will be indexed and searched.
 
     `summarize(section, university_name, policy_type, section_path)` writes
     the section summary that every chunk of that section carries. See
     summarize.py. Without it, chunks have an empty summary.
+
+    `classify`, with the same arguments, returns who the section is for
+    (see classify.py). Without it, chunks have no audience, which matches
+    every question.
     """
     cfg = config or get_config().chunking
     chunks: list[Chunk] = []
@@ -202,10 +207,21 @@ def chunk_document(
             summary = summarize(
                 section, doc.university_name, doc.policy_type.value, section_path
             )
+        # Who the section is FOR (see classify.py) - one call per section,
+        # like the summary. Without a classifier: for everyone, which never
+        # hides a passage.
+        audience = (
+            classify(section, doc.university_name, doc.policy_type.value, section_path)
+            if classify is not None
+            else []
+        )
         for i, piece in enumerate(pieces):
-            # Tagged from the source text and heading, never from the
-            # summary: model-written text must not decide who a rule is for.
-            entities = sorted(extract_entities(f"{section_path}\n{piece}"))
+            # Tagged from the source text and the section's OWN heading -
+            # not the full path, whose first part is the document title:
+            # "Academic Regulations - UG / PG Programmes" put "ug" and "pg"
+            # on every attendance chunk. Never from the summary either:
+            # model-written text must not decide who a rule mentions.
+            entities = sorted(extract_entities(f"{section.heading}\n{piece}"))
             chunks.append(
                 Chunk(
                     # Same citation for every piece of one section - they are
@@ -220,6 +236,7 @@ def chunk_document(
                     source_url=doc.source_url,
                     summary=summary,
                     entities=entities,
+                    audience=audience,
                 )
             )
 
@@ -230,9 +247,10 @@ def chunk_documents(
     docs: list[Document],
     config: ChunkingConfig | None = None,
     summarize: Callable[[Section, str, str, str], str] | None = None,
+    classify: Callable[[Section, str, str, str], list[str]] | None = None,
 ) -> list[Chunk]:
     """Chunk several documents, preserving order."""
     out: list[Chunk] = []
     for doc in docs:
-        out.extend(chunk_document(doc, config, summarize))
+        out.extend(chunk_document(doc, config, summarize, classify))
     return out
