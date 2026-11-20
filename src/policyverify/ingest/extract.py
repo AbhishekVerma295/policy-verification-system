@@ -612,8 +612,9 @@ def _find_pdf_tables(page) -> list[_PdfTable]:
     so a heading inside such a box is still seen as a heading.
     """
     found = []
+    words = page.get_text("words")
     for table in page.find_tables().tables:
-        rows = [[_pdf_cell(c) for c in row] for row in table.extract()]
+        rows = [[_pdf_cell(c) for c in row] for row in _cell_texts(table, words)]
         width = max((len(r) for r in rows), default=0)
         used = [c for c in range(width) if any(c < len(r) and r[c] for r in rows)]
         if len(rows) < 1 or len(used) < 2:
@@ -621,6 +622,38 @@ def _find_pdf_tables(page) -> list[_PdfTable]:
         rows = [r + [""] * (width - len(r)) for r in rows]
         found.append(_PdfTable(tuple(table.bbox), rows, _fill_by_geometry(table, rows)))
     return found
+
+
+def _cell_texts(table, words) -> list[list[str | None]]:
+    """Each cell's text, rebuilt from the page's words inside the cell's box.
+
+    pymupdf's own table.extract() drops the spaces between words in these
+    PDFs on some installations ("Attendanceroundedto: 95%andabove"), which
+    broke the attendance code and grade tables for search and for the
+    checks. The words are gathered by position instead: words on one line
+    joined by spaces, lines by newlines (which _pdf_cell relies on to rejoin
+    an e-mail address wrapped across lines). A merged position stays None,
+    as table.extract() reports it.
+    """
+    out: list[list[str | None]] = []
+    for row in table.rows:
+        texts: list[str | None] = []
+        for box in row.cells:
+            if box is None:
+                texts.append(None)
+                continue
+            x0, y0, x1, y1 = box
+            inside = sorted(
+                (w for w in words
+                 if x0 <= (w[0] + w[2]) / 2 <= x1 and y0 <= (w[1] + w[3]) / 2 <= y1),
+                key=lambda w: (w[5], w[6], w[7]),  # block, line, word
+            )
+            lines: dict[tuple[int, int], list[str]] = {}
+            for w in inside:
+                lines.setdefault((w[5], w[6]), []).append(w[4])
+            texts.append("\n".join(" ".join(ws) for ws in lines.values()))
+        out.append(texts)
+    return out
 
 
 def _fill_by_geometry(table, rows: list[list[str | None]]) -> list[list[str]]:

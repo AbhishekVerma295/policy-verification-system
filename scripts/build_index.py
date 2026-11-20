@@ -85,30 +85,36 @@ def main() -> int:
     documents = load_documents(processed_dir)
     print(f"  {len(documents)} documents")
 
+    # Index-time models (summaries, audience labels) can differ from the model
+    # that answers questions - see chunking.summary_model.
+    index_model = config.chunking.summary_model or config.llm.model
+    index_config = config.model_copy(deep=True)
+    index_config.llm.model = index_model
+
     summarizer = None
     if config.chunking.summaries:
         cache = SummaryCache(processed_dir / SUMMARY_CACHE_NAME)
-        llm = None if args.offline_summaries else get_llm(config)
+        llm = None if args.offline_summaries else get_llm(index_config)
         summarizer = SectionSummarizer(
             llm,
             config.chunking,
             cache=cache,
-            model_name=config.llm.model,
+            model_name=index_model,
             on_event=lambda msg: print(f"    {msg}", flush=True),
         )
-        source = "opening sentences" if llm is None else config.llm.model
+        source = f"opening sentences, cache of {index_model}" if llm is None else index_model
         print(f"\n  section summaries: {source} ({len(cache)} cached)")
 
     classifier = None
     if config.retrieval.audience_filter:
         audience_cache = AudienceCache(processed_dir / AUDIENCE_CACHE_NAME)
         classifier = SectionClassifier(
-            None if args.offline_summaries else get_llm(config),
+            None if args.offline_summaries else get_llm(index_config),
             cache=audience_cache,
-            model_name=config.llm.model,
+            model_name=index_model,
             on_event=lambda msg: print(f"    {msg}", flush=True),
         )
-        source = "everyone (offline)" if args.offline_summaries else config.llm.model
+        source = "everyone (offline)" if args.offline_summaries else index_model
         print(f"  section audiences: {source} ({len(audience_cache)} cached)")
 
     print("\n[2/3] chunking ...")

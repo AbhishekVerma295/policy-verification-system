@@ -806,3 +806,104 @@ def test_build_document_produces_a_valid_document():
     restored = doc.model_validate_json(doc.model_dump_json())
     assert restored.sections[0].heading == "Minimum Attendance"
     assert restored.sections[0].number == "4.2"
+
+
+# ---------------------------------------------------------------------------
+# PDF tables
+# ---------------------------------------------------------------------------
+
+
+def _pdf_with_table(rows, before="The code is shown as follows:", pages_of_furniture=0):
+    """A real PDF with a ruled table, drawn with pymupdf, so the test runs
+    the same table detection the corpus goes through."""
+    import pymupdf
+
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((50, 60), before, fontsize=10)
+    x0, y0, col_w, row_h = 50, 80, 160, 20
+    cols = len(rows[0])
+    for r, row in enumerate(rows):
+        for c, cell in enumerate(row):
+            rect = pymupdf.Rect(
+                x0 + c * col_w, y0 + r * row_h, x0 + (c + 1) * col_w, y0 + (r + 1) * row_h
+            )
+            page.draw_rect(rect, color=(0, 0, 0), width=0.8)
+            page.insert_text((rect.x0 + 4, rect.y1 - 6), cell, fontsize=9)
+    page.insert_text((50, y0 + len(rows) * row_h + 30), "Text after the table.", fontsize=10)
+    for _ in range(pages_of_furniture):
+        extra = doc.new_page()
+        extra.insert_text((50, 60), "SRM RUNNING HEADER", fontsize=10)
+        extra.insert_text((50, 90), "Body text of another page.", fontsize=10)
+    data = doc.tobytes()
+    doc.close()
+    assert cols  # rows are non-empty
+    return data
+
+
+def test_a_pdf_table_becomes_one_line_per_row_with_its_headers():
+    """Real failure: the attendance code table (R7.2) came out one cell per
+    line, so '85 to 94%' lost its code and the grade table lost which mark
+    range went with which grade."""
+    from policyverify.ingest.extract import extract_pdf
+
+    text = extract_pdf(_pdf_with_table([
+        ["Attendance rounded to", "Code"],
+        ["95% and above", "H"],
+        ["Below 75%", "L"],
+    ]))
+    assert "Attendance rounded to: 95% and above | Code: H." in text
+    assert "Attendance rounded to: Below 75% | Code: L." in text
+    # The text around the table is kept, in order.
+    assert text.index("as follows") < text.index("95% and above") < text.index("after the table")
+
+
+
+
+def test_rendering_a_table_does_not_change_which_lines_count_as_page_furniture():
+    """Real failure: rendering the hostel contacts table removed its serial
+    numbers, so page numbers no longer repeated often enough to be stripped
+    and contents entries stole real sections' citation IDs."""
+    from policyverify.ingest.extract import extract_pdf
+
+    text = extract_pdf(
+        _pdf_with_table([["Name", "Phone"], ["Sannasi A", "8056016605"]], pages_of_furniture=3)
+    )
+    assert "SRM RUNNING HEADER" not in text
+    assert "Name: Sannasi A | Phone: 8056016605." in text
+
+
+def test_content_before_the_first_heading_is_kept_as_a_preamble():
+    """Real failure: the plagiarism policy's Preamble and its DEFINITION of
+    plagiarism came before the first detected heading and were dropped, so
+    'what is plagiarism?' had no source in the index."""
+    from policyverify.ingest.normalize import split_into_sections
+
+    text = (
+        "Plagiarism Policy\nPreamble:\n" + "Ethics and honesty matter in research. " * 6
+        + "\nDefinition of Plagiarism: presenting another person's work as one's own.\n"
+        "2. Invalid Sources (Misleading Citation)\nInvalid source attribution occurs when ...\n"
+        "3. Duplication (Self Plagiarism)\nDuplication happens when ...\n"
+    )
+    sections = split_into_sections(text, "Plagiarism Policy")
+    assert sections[0].heading == "Preamble"
+    assert "Definition of Plagiarism" in sections[0].text
+
+
+def test_a_bare_title_before_the_first_heading_is_not_a_preamble():
+    from policyverify.ingest.normalize import split_into_sections
+
+    text = "Examination Policy\n1. Registration Of Courses\nStudents register ...\n2. Award Of Degree\nDegrees ...\n"
+    assert [s.heading for s in split_into_sections(text, "Examination Policy")] == [
+        "Registration Of Courses", "Award Of Degree"]
+
+
+def test_bracketed_glosses_do_not_decide_whether_a_line_is_a_heading():
+    from policyverify.ingest.normalize import _is_numbered_heading
+
+    # Rejected before - the plagiarism policy's type 1.
+    assert _is_numbered_heading("1. Secondary sources (Inaccurate citation)")
+    # Must stay a heading: counting the bracket's lowercase words broke it.
+    assert _is_numbered_heading("1. Founder's Scholarship (applicable for 4 years)")
+    # Still not a heading: sentence-case prose.
+    assert not _is_numbered_heading("1. all examinations undertaken shall be cancelled")

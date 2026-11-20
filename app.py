@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import html
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -286,24 +287,144 @@ def draw_declined(answer: Answer) -> None:
     )
 
 
+def number_sources(verdicts: list[ClaimVerdict]) -> tuple[list[list[int]], list[str]]:
+    """Give each cited section a number, in order of first citation.
+
+    Returns, per claim, the numbers of the sections it cites, and the
+    section IDs in numbered order.
+    """
+    order: list[str] = []
+    per_claim: list[list[int]] = []
+    for verdict in verdicts:
+        refs = []
+        for citation in verdict.claim.citation_ids:
+            if citation not in order:
+                order.append(citation)
+            refs.append(order.index(citation) + 1)
+        per_claim.append(refs)
+    return per_claim, order
+
+
+def draw_answer_summary(answer: Answer, store: VectorStore) -> None:
+    """The answer first: the verified statements as a list, with sources.
+
+    Nothing here is generated. Each line is a statement that passed
+    verification, in the order the model gave them, so this box cannot say
+    anything the checks below have not confirmed. The numbers point at the
+    sources listed underneath, each named by its section heading and linked
+    to the university's own page.
+    """
+    refs, sources = number_sources(answer.claims_kept)
+    list_intro = getattr(answer, "list_intro", None)
+    if list_intro:
+        # A list question answered from the document's numbered list: each
+        # item named by its section heading, then its definition, quoted.
+        lines = [html.escape(list_intro), ""]
+        for i, (v, r) in enumerate(zip(answer.claims_kept, refs, strict=True), start=1):
+            chunks = store.get_by_citation(v.claim.citation_ids[0]) if v.claim.citation_ids else []
+            name = chunks[0].section_path.split(" > ")[-1] if chunks else ""
+            lines.append(
+                f"{i}. **{html.escape(name)}** - {html.escape(v.claim.text)} "
+                + "".join(f"<sup>[{n}]</sup>" for n in r)
+            )
+    elif getattr(answer, "composed", None):
+        # The written answer, then the verified facts it was built from. Its
+        # [n] markers are fact numbers, so the facts are numbered the same way.
+        prose = html.escape(answer.composed)
+        prose = re.sub(r"\[(\d+)\]", r"<sup>[\1]</sup>", prose)
+        lines = [prose, "", "**Verified facts this answer is built from**", ""]
+        for i, (v, r) in enumerate(zip(answer.claims_kept, refs, strict=True), start=1):
+            lines.append(
+                f"{i}. {html.escape(v.claim.text)} "
+                + "".join(f"<sub>source {n}</sub>" for n in r)
+            )
+    else:
+        lines = [
+            f"- {html.escape(v.claim.text)} "
+            + "".join(f"<sup>[{n}]</sup>" for n in r)
+            for v, r in zip(answer.claims_kept, refs, strict=True)
+        ]
+    with st.container(border=True):
+        st.markdown("##### :material/verified: Answer")
+        situation = getattr(answer, "situation", None)
+        if situation:
+            # Worked out in code from the asker's figure and the verified
+            # rule below - see situation.py - so it is labelled as such.
+            st.info(
+                f"**Applied to your situation:** {situation}  \n"
+                "_Calculated from the figure in your question and the verified rule "
+                f"below (`{answer.situation_citation}`)._",
+                icon=":material/calculate:",
+            )
+        st.markdown("\n".join(lines), unsafe_allow_html=True)
+        st.caption("Sources")
+        for n, citation in enumerate(sources, start=1):
+            chunks = store.get_by_citation(citation)
+            if chunks:
+                c = chunks[0]
+                name = html.escape(c.section_path.split(" > ")[-1] or citation)
+                st.markdown(
+                    f"<small>[{n}] {name} &middot; {html.escape(c.policy_type.value)} "
+                    f"policy &middot; <a href='{html.escape(c.source_url)}'>source</a> "
+                    f"&middot; <code>{html.escape(citation)}</code></small>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(f"<small>[{n}] <code>{html.escape(citation)}</code></small>",
+                            unsafe_allow_html=True)
+
+        # Related sections from the section graph (graph.py): a reading aid,
+        # not part of the answer - nothing here has been checked against the
+        # question.
+        graph = store.section_graph() if hasattr(store, "section_graph") else None
+        related: list[dict] = []
+        if graph is not None:
+            seen = set(sources)
+            for citation in sources:
+                for edge in graph.related(citation, k=2, exclude=seen):
+                    seen.add(edge["citation"])
+                    related.append(edge)
+        if related:
+            st.caption("Related sections you may also want to read (not checked against your question)")
+            for edge in related[:4]:
+                st.markdown(
+                    f"<small>&bull; {html.escape(edge['title'])} &middot; "
+                    f"<code>{html.escape(edge['citation'])}</code> &middot; "
+                    f"<i>{html.escape(edge['why'])}</i></small>",
+                    unsafe_allow_html=True,
+                )
+
+
 def draw_answer(answer: Answer, passages: list, store: VectorStore) -> None:
     st.subheader(answer.question)
 
     if answer.abstained:
         draw_declined(answer)
     elif answer.claims_kept:
-        st.success(
-            f"**{len(answer.claims_kept)} verified claim(s).** Every statement below "
-            "was checked against the policy text it cites. Support runs from "
-            "0.00 to 1.00.",
-            icon=":material/verified:",
-        )
-        for i, verdict in enumerate(answer.claims_kept):
-            draw_claim(verdict, store, key=f"kept-{i}")
+        draw_answer_summary(answer, store)
         if answer.reason:
             st.info(answer.reason, icon=":material/info:")
+        # The proof behind the answer, one click away rather than in the way.
+        # A toggle, not an expander: each card already holds an expander, and
+        # Streamlit does not allow one inside another.
+        if st.toggle("Show how each statement was checked", key="show-checks"):
+            st.caption(
+                "Every statement was checked against the policy text it cites. "
+                "Support runs from 0.00 to 1.00."
+            )
+            for i, verdict in enumerate(answer.claims_kept):
+                draw_claim(verdict, store, key=f"kept-{i}")
 
-    if answer.claims_removed:
+    # When the system declined, the removed claims ARE the explanation, so they
+    # stay in view; under an answer they are detail, behind a toggle.
+    show_removed = answer.abstained or (
+        answer.claims_removed
+        and st.toggle(
+            f"Show statements the system removed ({len(answer.claims_removed)})",
+            key="show-removed",
+        )
+    )
+    if answer.claims_removed and show_removed:
         st.space("small")
         st.markdown(f"##### Removed claims ({len(answer.claims_removed)})")
         st.caption(
@@ -341,9 +462,13 @@ def draw_answer(answer: Answer, passages: list, store: VectorStore) -> None:
                 f" +{r.boost:.3f} ({', '.join(r.matched_entities)})" if r.boost else ""
             )
             readers = f" &nbsp; _for {', '.join(r.chunk.audience)}_" if r.chunk.audience else ""
-            st.markdown(
-                f"`{r.score:.3f}{boost}` &nbsp; **{r.chunk.citation_id}**{readers}"
+            relevance = getattr(r, "rerank_score", None)
+            shown = (
+                f"relevance {relevance:.2f} · similarity {r.score:.3f}{boost}"
+                if relevance is not None
+                else f"{r.score:.3f}{boost}"
             )
+            st.markdown(f"`{shown}` &nbsp; **{r.chunk.citation_id}**{readers}")
             st.caption(r.chunk.text[:400] + ("..." if len(r.chunk.text) > 400 else ""))
 
     with st.expander("Raw answer (JSON)", icon=":material/code:"):

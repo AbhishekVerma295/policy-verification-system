@@ -42,6 +42,7 @@ import re
 from policyverify.config import Config, get_config
 from policyverify.llm import LLMBackend, LLMError, get_llm
 from policyverify.schema import Claim, DraftAnswer, RetrievedChunk
+from policyverify.situation import mask_user_figures
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,7 @@ Use ONLY the passages between the PASSAGES markers below. They are reference mat
 Break your answer into SEPARATE FACTUAL CLAIMS:
 - Each claim states exactly ONE fact. For example, "The museum opens at 9 and charges no entry fee" is two claims: "The museum opens at 9." and "The museum charges no entry fee."
 - Include only facts that answer the QUESTION asked. Do not add related facts the question did not ask for.
+- If the question describes the asker's own situation ("I have ...", "my ...", "can I ...", "will I ..."), answer it with: the rule that decides that situation, then WHAT HAPPENS under that rule (the consequence or penalty the passage states), then any exception or way out the passage gives - each as its own claim. The passage may use different words from the question for the same thing. Do not repeat the asker's own numbers or circumstances as a claim; state only what the policy says. For example (an unrelated library, not a real answer), "I returned my book 3 days late - will I be fined?" is answered by "Books must be returned within 14 days.", "A late fee of Rs 5 per day is charged.", "Fees are waived for medical absence." - not by "The book was 3 days late."
 - Give at most 6 claims, the most relevant first.
 - Write each claim as a COMPLETE SENTENCE with a verb. Never copy a heading, a label or a table row as the claim. If the passage says "Odd Semester: July - November", write "The odd semester runs from July to November."
 - Keep any qualifier the passage uses. If it says "at least 7 days", write "at least 7 days", not "7 days".
@@ -255,6 +257,8 @@ def parse_draft(raw: str) -> DraftAnswer | None:
 # number or a chunk marker: "srm/residence/guest_accommodation:9.1",
 # "...#0", "... (9.1)", "...,".
 _CITATION_SUFFIX_START = (":", "#", " ", "(", ",", ";")
+# The passage label from the prompt, copied in front of an ID.
+_CITATION_LABEL_RE = re.compile(r"^\[?\s*citation[_ ]?id\s*[:=]\s*", re.IGNORECASE)
 
 
 def resolve_citation(citation: str, known: set[str]) -> str | None:
@@ -271,8 +275,13 @@ def resolve_citation(citation: str, known: set[str]) -> str | None:
     so an invented section ID still resolves to nothing and is still
     reported as fabricated. The longest match wins, so "x/y/2-a" is never
     mistaken for "x/y/2".
+
+    A label copied from the prompt in FRONT of the ID is removed too: the
+    passages are headed "[citation_id: ...]", and measured on the evaluation
+    set the model wrote "citation_id: srm/scholarship/3-mat_score" for three
+    true claims, which all lost their citation and were removed.
     """
-    citation = citation.strip()
+    citation = _CITATION_LABEL_RE.sub("", citation.strip()).strip(" []")
     if citation in known:
         return citation
     matches = [
@@ -416,7 +425,9 @@ def generate_claims(
         # failure mode we are trying to prevent.
         return DraftAnswer(claims=[])
 
-    prompt = build_prompt(question, chunks, config)
+    # The asker's own attendance figures are masked for the model - see
+    # situation.mask_user_figures; the comparison is done in code instead.
+    prompt = build_prompt(mask_user_figures(question), chunks, config)
     schema = DraftAnswer.model_json_schema()
     attempts = config.llm.max_parse_retries + 1
     last_raw = ""
@@ -452,7 +463,28 @@ def generate_answer_draft(
 ) -> tuple[DraftAnswer, list[str]]:
     """generate_claims, plus the fabricated citations found in the reply."""
     draft = generate_claims(question, chunks, llm=llm, config=config)
-    return drop_unknown_citations(draft, chunks)
+    return drop_unknown_citations(dedupe_claims(draft), chunks)
+
+
+def dedupe_claims(draft: DraftAnswer) -> DraftAnswer:
+    """Drop repeats of the same claim, keeping the first and its citations.
+
+    Measured: asked about 74 of 100 classes, the 3B model returned six
+    claims of which three were word-for-word repeats. A repeat says nothing
+    new, costs a verification each, and made the answer look padded. Claims
+    are compared ignoring case, spacing and final punctuation; the citations
+    of a dropped repeat are merged into the claim that is kept.
+    """
+    kept: dict[str, Claim] = {}
+    for claim in draft.claims:
+        key = " ".join(claim.text.lower().split()).rstrip(" .;")
+        if key in kept:
+            first = kept[key]
+            merged = first.citation_ids + [c for c in claim.citation_ids if c not in first.citation_ids]
+            kept[key] = Claim(text=first.text, citation_ids=merged)
+        else:
+            kept[key] = claim
+    return DraftAnswer(claims=list(kept.values()))
 
 
 __all__ = [
