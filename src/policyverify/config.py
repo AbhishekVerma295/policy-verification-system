@@ -169,14 +169,18 @@ class LLMConfig(BaseModel):
     running locally; the point of naming it here is that swapping it later is a
     config change rather than a code change.
 
-    temperature is 0 so the same question gives the same answer. This is not a
-    style preference - a system whose output changes between runs cannot be
-    evaluated or debugged.
+    temperature is 0.001 with a fixed seed so the same question gives the
+    same answer. This is not a style preference - a system whose output
+    changes between runs cannot be evaluated or debugged. It is 0.001 rather
+    than exactly 0 because some backends treat 0 as "use the default" and
+    others divide by it; 0.001 is greedy decoding in practice everywhere, and
+    the seed pins down any remaining sampling.
     """
 
     backend: str = "ollama"
     model: str = "qwen3:4b"
-    temperature: float = 0.0
+    temperature: float = 0.001
+    seed: int = 42
     # Hard ceiling so one bad question cannot hang the whole app. Generous,
     # because on a machine with no GPU a normal answer takes over a minute.
     timeout_seconds: int = 300
@@ -364,6 +368,7 @@ class Config(BaseModel):
             "llm_model": self.llm.model,
             "llm_backend": self.llm.backend,
             "llm_temperature": str(self.llm.temperature),
+            "llm_seed": str(self.llm.seed),
             "embedding_model": self.embedding.model_name,
             "nli_model": self.nli.model_name,
             "top_k": str(self.retrieval.top_k),
@@ -389,6 +394,22 @@ def load_config(path: Path | str | None = None) -> Config:
     # right model depends on the machine (a laptop with no GPU wants a smaller
     # one), and that should not require editing a committed file.
     #     set POLICYVERIFY_LLM_MODEL=qwen2.5:3b
+    # Before the environment variable: config.local.yaml, a per-machine file
+    # that is never committed (see .gitignore). It overrides config.yaml
+    # section by section, so a laptop can say "llm: {model: qwen2.5:3b}"
+    # once instead of every shell having to set the variable.
+    local_path = config_path.with_name("config.local.yaml")
+    if path is None and local_path.exists():
+        with open(local_path, encoding="utf-8") as f:
+            local = yaml.safe_load(f) or {}
+        merged = config.model_dump()
+        for section, values in local.items():
+            if isinstance(values, dict) and isinstance(merged.get(section), dict):
+                merged[section].update(values)
+            else:
+                merged[section] = values
+        config = Config.model_validate(merged)
+
     model = os.environ.get(LLM_MODEL_ENV, "").strip()
     if model:
         config.llm.model = model
