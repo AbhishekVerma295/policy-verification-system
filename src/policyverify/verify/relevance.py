@@ -265,8 +265,19 @@ def judge_views(question: str) -> list[str]:
 # Questions whose answer IS a name: "Which software ...?", "Who is the
 # current Vice Chancellor?". "Who should I contact" is a procedure, not an
 # identity, so only "who is/are/was/were" counts.
+#
+# "Which" counts only before a noun whose answer is a proper name. "Which of
+# my published articles can be excluded from the check?" is answered by a
+# description ("only those published from the thesis, certified by the
+# supervisor"), and requiring a name there would decline a correct answer.
+_NAMED_THINGS = (
+    r"software|tools?|app|apps|application|website|portal|platform|company|"
+    r"companies|brand|bank|bus(?:es)?|routes?|vendor|agency|agencies|book|"
+    r"person|official|organi[sz]ation"
+)
 _NAME_QUESTION_RE = re.compile(
-    r"\bwhich\b|\bwho\s+(?:is|are|was|were)\b|\bname\s+of\b|\bwhat\s+is\s+the\s+name\b",
+    rf"\bwhich\s+(?:\w+\s+){{0,2}}(?:{_NAMED_THINGS})\b"
+    r"|\bwho\s+(?:is|are|was|were)\b|\bname\s+of\b|\bwhat\s+is\s+the\s+name\b",
     re.IGNORECASE,
 )
 # A proper name or acronym: a run of Capitalised words / ACRONYMS / words

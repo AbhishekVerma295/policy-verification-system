@@ -38,6 +38,7 @@ from policyverify.evalset import (
 VALID_CITATION = "srm/attendance/7.3-minimum_attendance"
 
 SCENARIO_SET = Path(__file__).resolve().parents[1] / "eval" / "scenarios.jsonl"
+SECTION_SETS = Path(__file__).resolve().parents[1] / "eval" / "sections"
 
 
 def _item(**overrides) -> dict:
@@ -224,7 +225,10 @@ def test_the_real_set_loads():
 
 def _all_real_items():
     """The adversarial set plus the scenario set, which has its own file."""
-    return load_evalset() + load_evalset(SCENARIO_SET)
+    items = load_evalset() + load_evalset(SCENARIO_SET)
+    for path in sorted(SECTION_SETS.glob("*.jsonl")):
+        items += load_evalset(path)
+    return items
 
 
 def test_the_real_set_covers_every_trap_category():

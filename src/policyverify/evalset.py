@@ -76,6 +76,14 @@ class TrapCategory(StrEnum):
     # eval/scenarios.jsonl.
     SCENARIO = "scenario"
 
+    # The per-document sets (eval/sections/*.jsonl) also ask every section
+    # two plainer ways, so a section that cannot be answered at all shows up:
+    # DIRECT asks in the policy's own terms ("What is verbatim plagiarism?");
+    # INDIRECT asks for the same rule in other words ("If I cite the source
+    # but leave out quotation marks, is it still plagiarism?").
+    DIRECT = "direct"
+    INDIRECT = "indirect"
+
 
 class Split(StrEnum):
     TUNING = "tuning"

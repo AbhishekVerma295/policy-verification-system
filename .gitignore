@@ -38,6 +38,7 @@ models/
 !eval/claims.jsonl
 !eval/final_heldout.jsonl
 !eval/scenarios.jsonl
+!eval/sections/*.jsonl
 
 # --- Editors and OS --------------------------------------------------------
 .vscode/

@@ -431,3 +431,13 @@ def test_the_name_check_overrides_a_high_cross_encoder_score():
     marked = report.verdicts[0]
     assert marked.checks.relevant is False
     assert marked.checks.relevance_source == "cross_encoder+name_check"
+
+
+def test_which_needs_a_name_only_before_a_named_kind_of_thing():
+    from policyverify.verify.relevance import asks_for_a_name
+
+    assert asks_for_a_name("Which plagiarism detection software does the university use?")
+    assert asks_for_a_name("Which bus routes serve the Kattankulathur campus?")
+    # Answered by a description, not a name.
+    assert not asks_for_a_name("Which of my published articles can be excluded from the check?")
+    assert not asks_for_a_name("I got rank 300. Which scholarship can I get?")

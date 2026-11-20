@@ -1,0 +1,100 @@
+{
+  "srm/academic_integrity/1-secondary_sources_inaccurate_citation": {
+    "chars": 356,
+    "sha256": "2d92b685ecc0c2f5c405c62829d50012a837ec29da6bf3a6fe143b1a11649607",
+    "used_by": [
+      "ai-04",
+      "ai-05"
+    ]
+  },
+  "srm/academic_integrity/10-complete_plagiarism_intellectual_theft_s": {
+    "chars": 3695,
+    "sha256": "7cccd58277a152f69dfef667f81eb430c495185f09fdcfabf45d25583100b22b",
+    "used_by": [
+      "ai-24",
+      "ai-25",
+      "ai-26",
+      "ai-27",
+      "ai-28",
+      "ai-29",
+      "ai-30",
+      "ai-31"
+    ]
+  },
+  "srm/academic_integrity/2-invalid_sources_misleading_citation_fabr": {
+    "chars": 274,
+    "sha256": "9e438c647de5dd71c031c525b29dbf9ac371fab95749710f4e068bbe76b66438",
+    "used_by": [
+      "ai-06",
+      "ai-07"
+    ]
+  },
+  "srm/academic_integrity/3-duplication_self_plagiarism_reuse": {
+    "chars": 681,
+    "sha256": "1693df793c39ca190505c245cee6c9915a7e49a8747ff5ebb7f08290d2e2064d",
+    "used_by": [
+      "ai-08",
+      "ai-09",
+      "ai-10",
+      "ai-11"
+    ]
+  },
+  "srm/academic_integrity/4-paraphrasing_plagiarism_intellectual_the": {
+    "chars": 320,
+    "sha256": "ff6245d09292b4aca6017b4b5c81f1f6f736bacb7b60ac40e1937c48b90f3fb8",
+    "used_by": [
+      "ai-12",
+      "ai-13"
+    ]
+  },
+  "srm/academic_integrity/5-repetitive_research_self_plagiarism_reus": {
+    "chars": 286,
+    "sha256": "f6ca1385a15b8373772c2ec8a2b862eea0e8c8d6a3c8b5f5039cde60cbfa61cf",
+    "used_by": [
+      "ai-14",
+      "ai-15"
+    ]
+  },
+  "srm/academic_integrity/6-replication_author_submission_violation": {
+    "chars": 262,
+    "sha256": "e801a6c15b6deffd395f29e981a3c52d8f2ce63455ccd198cd5b4c176439b79f",
+    "used_by": [
+      "ai-16",
+      "ai-17"
+    ]
+  },
+  "srm/academic_integrity/7-misleading_attribution_inaccurate_author": {
+    "chars": 292,
+    "sha256": "029a87ff3903aa73b6d708be63c30f95fca06c30b7bc500a3714b657c545b6e8",
+    "used_by": [
+      "ai-18",
+      "ai-19"
+    ]
+  },
+  "srm/academic_integrity/8-unethical_collaboration_inaccurate_autho": {
+    "chars": 327,
+    "sha256": "e9b19abc49e075386e4dc8dbd3628d1f63d8e7715b9df513e9b5b98dd6f1cb33",
+    "used_by": [
+      "ai-20",
+      "ai-21"
+    ]
+  },
+  "srm/academic_integrity/9-verbatim_plagiarism_copy_and_paste_intel": {
+    "chars": 374,
+    "sha256": "38fb25fdb5da762e9de9ea9c59ac5ecd800ddb407412cd455d5e0d5719da9fa7",
+    "used_by": [
+      "ai-03",
+      "ai-22",
+      "ai-23"
+    ]
+  },
+  "srm/academic_integrity/preamble": {
+    "chars": 1235,
+    "sha256": "a0312b4e571b450bab60b4a6bb33f066115b78011d1590299964aa1c14b4836d",
+    "used_by": [
+      "ai-01",
+      "ai-02",
+      "ai-03"
+    ]
+  }
+}
