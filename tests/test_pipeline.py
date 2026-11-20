@@ -107,6 +107,7 @@ def test_answer_records_timings_for_every_stage():
     assert answer.timings.verify_ms > 0
     assert answer.timings.total_ms == pytest.approx(
         answer.timings.retrieve_ms + answer.timings.generate_ms + answer.timings.verify_ms
+        + answer.timings.compose_ms
     )
 
 
@@ -367,7 +368,9 @@ def test_gate_time_is_recorded_and_counted_inside_verify_time():
     assert t.relevance_ms >= 15
     assert t.verify_ms >= t.relevance_ms
     # included in verify_ms, so not added to the total a second time
-    assert t.total_ms == pytest.approx(t.retrieve_ms + t.generate_ms + t.verify_ms)
+    assert t.total_ms == pytest.approx(
+        t.retrieve_ms + t.generate_ms + t.verify_ms + t.compose_ms
+    )
 
 
 def test_a_failed_judge_is_recorded_on_the_answer():

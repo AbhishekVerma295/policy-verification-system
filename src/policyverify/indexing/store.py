@@ -49,6 +49,7 @@ from pathlib import Path
 
 from policyverify.config import Config, get_config
 from policyverify.entities import decode_entities, entity_weights
+from policyverify.graph import SectionGraph, build_section_graph
 from policyverify.indexing.bm25 import BM25Index
 from policyverify.schema import Chunk, PolicyType, RetrievedChunk
 
@@ -318,7 +319,14 @@ class VectorStore:
         self.manifest_path.write_text(
             json.dumps(manifest.to_dict(), indent=2), encoding="utf-8"
         )
+        # The section graph (graph.py) is built from the same chunks and saved
+        # beside the manifest, so it can never describe a different corpus.
+        build_section_graph(chunks, manifest.entity_weights).save(self.index_dir)
         return manifest
+
+    def section_graph(self) -> SectionGraph | None:
+        """The graph of related sections saved with this index, if any."""
+        return SectionGraph.load(self.index_dir)
 
     # -- reading ----------------------------------------------------------
 

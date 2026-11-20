@@ -380,6 +380,9 @@ class RetrievedChunk(BaseModel):
     # See entities.py. Results are ordered by `rank_score`.
     boost: float = 0.0
     matched_entities: list[str] = Field(default_factory=list)
+    # The cross-encoder's probability (0-1) that this passage answers the
+    # question, when re-ranking ran (retrieval.rerank). See retrieve.py.
+    rerank_score: float | None = None
 
     @property
     def rank_score(self) -> float:
@@ -491,6 +494,9 @@ class CheckResults(BaseModel):
     # Cosine similarity of the claim to the question (the same measure the
     # retrieval step uses), when it could be computed.
     relevance_similarity: float | None = None
+    # The cross-encoder's probability that the claim answers the question,
+    # when that judge decided (relevance.judge = "cross_encoder").
+    relevance_score: float | None = None
     # How the decision was reached: "similarity" (clear-cut either way, no
     # model asked), "judge" (borderline, the language model decided), or
     # "similarity_fallback" (the model could not be reached or gave an
@@ -530,10 +536,12 @@ class Timings(BaseModel):
     # part of checking), so it is not added again in total_ms; this field only
     # says how much of verify_ms it was.
     relevance_ms: float = 0.0
+    # Writing the answer text from the verified facts (compose.py).
+    compose_ms: float = 0.0
 
     @property
     def total_ms(self) -> float:
-        return self.retrieve_ms + self.generate_ms + self.verify_ms
+        return self.retrieve_ms + self.generate_ms + self.verify_ms + self.compose_ms
 
 
 class Answer(BaseModel):
@@ -556,6 +564,21 @@ class Answer(BaseModel):
     # this question (unreachable, or an unusable reply) and the similarity
     # alone decided. Recorded so a fallback is never silent.
     relevance_judge_failed: bool = False
+    # The asker's own figure set against a verified threshold ("Your figure:
+    # 74 classes out of 100 = 74%, which is below the minimum of 75%"),
+    # computed by situation.py, never by the model. None when the question
+    # gives no figure or no single verified threshold applies.
+    situation: str | None = None
+    # Set when the question asked for a list ("what are the types of X?") and
+    # it was answered from the document's numbered list (listing.py):
+    # "The policy lists 10 types of plagiarism:". The kept claims are the items.
+    list_intro: str | None = None
+    # A written answer - direct first sentence, short explanation - made only
+    # from the kept claims, with every sentence checked against them
+    # (compose.py). None when composing is off or nothing survived the check.
+    composed: str | None = None
+    composed_dropped: int = 0
+    situation_citation: str | None = None
 
     timings: Timings = Field(default_factory=Timings)
     # Which model and settings produced this, so a saved run can be understood
