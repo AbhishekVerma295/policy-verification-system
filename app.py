@@ -15,7 +15,8 @@ Three things the page is built to make visible:
   2. claims the system generated and then REMOVED - shown, never hidden
   3. abstention as a first-class result, not an error message
 
-Evaluation results are not shown here; see scripts/evaluate.py.
+Saved evaluation runs are shown in a second tab (ui_evaluation.py); they are
+read from eval/results/, never re-run here.
 """
 
 from __future__ import annotations
@@ -39,6 +40,7 @@ from policyverify.retrieve import query_audience, retrieve  # noqa: E402
 from policyverify.schema import Answer, ClaimVerdict, VerdictStatus  # noqa: E402
 from policyverify.verify import NLIChecker  # noqa: E402
 from policyverify.verify.verifier import policy_says  # noqa: E402
+from ui_evaluation import draw_evaluation_tab  # noqa: E402
 
 st.set_page_config(page_title="Policy Verification System", page_icon="✅", layout="wide")
 
@@ -53,14 +55,12 @@ STYLES = {
 # A supported claim withheld because it does not answer the question asked.
 OFF_TOPIC_STYLE = ("TRUE BUT OFF TOPIC", "#6b7280", "rgba(107, 114, 128, 0.10)")
 
-# What the page says while each pipeline stage runs.
+# One word per pipeline stage, shown next to the spinner while it runs.
 STAGE_MESSAGES = {
-    "retrieve": "1/4  Searching the policy documents for relevant passages ...",
-    "generate": "2/4  The language model is writing claims from those passages "
-    "(the slow step: 1-2 minutes without a GPU) ...",
-    "verify": "3/4  Checking every claim against the policy text it cites, "
-    "and that it answers the question ...",
-    "decide": "4/4  Keeping verified claims, removing the rest ...",
+    "retrieve": "Searching",
+    "generate": "Drafting",
+    "verify": "Checking",
+    "decide": "Finishing",
 }
 
 # Example questions. Each one was answered correctly, with every claim
@@ -253,39 +253,63 @@ def draw_declined(answer: Answer) -> None:
     words a student would use, and lists what the system can answer from -
     otherwise "no answer" reads like a crash.
     """
-    # abstain.decide() words this case as "do not appear to contain": the
-    # relevance gate found the drafted claims TRUE of the policy but not an
-    # answer to the question - so the fact-checker did not reject them.
-    off_topic = "do not appear to contain" in (answer.reason or "")
-    if off_topic:
-        why = (
-            "The search found related passages, but none of them states this. "
-            "The statements drafted from them are true of the policy but do not "
-            "answer the question; they are listed below under *Removed claims*."
+    # Four different situations end in a decline, and only the first one means
+    # the documents are silent. Saying "not stated" for all of them misleads:
+    # in the others the policy text was found, and the answer may well be in
+    # it (report, Figure 7).
+    removed = answer.claims_removed
+    off_topic = any(getattr(v.checks, "relevant", None) is False for v in removed)
+    # Only when EVERY removed statement was contradicted does the page say the
+    # draft disagreed with the policy; a mix is reported as "not verified".
+    refuted = all(v.status is VerdictStatus.REFUTED for v in removed)
+    some_refuted = any(v.status is VerdictStatus.REFUTED for v in removed)
+
+    if not removed:
+        # 1. Nothing to answer from: the documents do not seem to cover it.
+        st.warning(
+            "**The policy documents do not seem to cover this, so the system did not answer.**"
+            "\n\nThe closest passages it found do not contain this information.",
+            icon=":material/block:",
         )
-    elif answer.claims_removed:
-        why = (
-            "The language model drafted an answer, but the fact-checker could not "
-            "confirm it from the policy text, so it is **not** shown as an answer. "
-            "The rejected draft is listed below under *Removed claims*."
+        st.info(
+            f"The system answers **only** from these {len(DOCUMENTS)} documents. A question "
+            "about anything else is declined instead of guessed:\n\n"
+            + "\n".join(f"- {name}" for name in DOCUMENTS)
+            + "\n\nThe passages it searched are under *Retrieved passages* at the bottom."
+        )
+        return
+
+    if off_topic:
+        # 2. True statements were found, but judged not to answer the question.
+        st.warning(
+            "**Related rules were found, but the system judged that they do not answer "
+            "this exact question, so it did not answer.**\n\n"
+            "The statements below are true of the policy text. They may still help: "
+            "this check is strict and sometimes sets aside a correct answer.",
+            icon=":material/help:",
+        )
+    elif refuted:
+        # 3. The draft disagreed with the policy text.
+        st.warning(
+            "**The drafted answer conflicted with the policy text, so it was not shown.**"
+            "\n\nThe policy covers this topic. Each removed statement below shows the "
+            "policy sentence it was checked against, so you can judge it yourself.",
+            icon=":material/gpp_bad:",
         )
     else:
-        why = (
-            "The search found the closest passages in the policy documents, but "
-            "none of them states this information, so there was nothing to answer from."
+        # 4. The text was found but the draft could not be confirmed from it.
+        st.warning(
+            "**An answer was drafted but could not be verified, so it is not shown.**"
+            "\n\nThis does not mean the documents are silent: the information may be "
+            "there in a form the checker could not confirm (for example, inside a table). "
+            "The cited sections are listed with each removed statement below."
+            + (
+                " Some statements were contradicted by the policy sentence shown with them."
+                if some_refuted
+                else ""
+            ),
+            icon=":material/pending:",
         )
-
-    st.warning(
-        "**This is not stated in the SRM policy documents, so the system did not "
-        "answer.**\n\n" + why,
-        icon=":material/block:",
-    )
-    st.info(
-        f"The system answers **only** from these {len(DOCUMENTS)} documents. A question about "
-        "anything else is declined instead of guessed:\n\n"
-        + "\n".join(f"- {name}" for name in DOCUMENTS)
-        + "\n\nThe passages it searched are under *Retrieved passages* at the bottom."
-    )
 
 
 def number_sources(verdicts: list[ClaimVerdict]) -> tuple[list[list[int]], list[str]]:
@@ -493,104 +517,115 @@ st.caption(
     "the policy text it cites, and the system declines when the evidence is not there."
 )
 
-try:
-    with st.spinner("Loading the search index and fact-checking model ..."):
-        config, store, nli, llm = load_system()
-except IndexMismatchError as exc:
-    st.error(str(exc))
-    st.stop()
+ask_tab, eval_tab = st.tabs(
+    [":material/chat: Ask a question", ":material/analytics: Evaluation results"]
+)
 
-with st.spinner(f"Loading {config.llm.model} into memory ..."):
-    llm_problem = warm_up_llm()
+# Drawn first: it only reads saved result files, so it works even when the
+# models below cannot load.
+with eval_tab:
+    draw_evaluation_tab()
 
-if llm_problem:
-    st.error(
-        f"Language model not reachable:\n\n{llm_problem}\n\n"
-        "Open the Ollama app from the Start menu, then refresh this page."
-    )
+with ask_tab:
 
-with st.form("ask"):
-    question = st.text_input(
-        "Your question",
-        key="question_box",
-        placeholder="e.g. What is the minimum attendance requirement?",
-    )
-    submitted = st.form_submit_button("Verify answer", type="primary")
-
-# The examples are drawn into this slot further down, once we know whether
-# there is an answer to show. Reserving the space here keeps them directly
-# under the question box; filling it later lets the *first* answer collapse
-# them too, which a plain top-to-bottom render cannot do.
-examples_slot = st.container()
-
-
-def draw_examples(collapsed: bool) -> None:
-    def buttons() -> None:
-        columns = st.columns(3)
-        for i, (kind, example) in enumerate(EXAMPLES):
-            columns[i % 3].button(
-                example,
-                key=f"example-{i}",
-                help=kind,
-                on_click=use_example,
-                args=(example,),
-                width="stretch",
-            )
-
-    with examples_slot:
-        if collapsed:
-            # Six full-width buttons between the question and the answer
-            # pushed every result below the fold.
-            with st.expander("Try another example", icon=":material/lightbulb:"):
-                buttons()
-        else:
-            st.caption("Try one (each of these is answered from the policy documents):")
-            buttons()
-
-
-to_run = question.strip() if submitted else st.session_state.pop("pending", None)
-
-if to_run:
-    # Search every policy, with the configured number of passages.
-    policy = None
-    top_k = config.retrieval.top_k
     try:
-        with st.status("Working on your question ...", expanded=True) as status:
-            def show_stage(name: str) -> None:
-                status.write(STAGE_MESSAGES[name])
+        with st.spinner("Loading the search index and fact-checking model ..."):
+            config, store, nli, llm = load_system()
+    except IndexMismatchError as exc:
+        st.error(str(exc))
+        st.stop()
 
-            answer = answer_question(
-                to_run,
-                k=top_k,
-                policy_type=policy,
-                config=config,
-                store=store,
-                llm=llm,
-                nli=nli,
-                on_stage=show_stage,
-            )
-            # Same call the pipeline made, repeated so the passages can be
-            # shown. Retrieval is deterministic, so these are the same ones.
-            passages = retrieve(
-                to_run, k=top_k, policy_type=policy, config=config, store=store
-            )
-            status.update(
-                label=f"Done in {answer.timings.total_ms / 1000:.0f} seconds",
-                state="complete",
-                expanded=False,
-            )
-        st.session_state["result"] = (answer, passages)
-    except (LLMError, GenerationError) as exc:
-        st.session_state.pop("result", None)
+    with st.spinner(f"Loading {config.llm.model} into memory ..."):
+        llm_problem = warm_up_llm()
+
+    if llm_problem:
         st.error(
-            f"Could not produce an answer: {exc}\n\n"
-            "If this says Ollama could not be reached, open the Ollama app from "
-            "the Start menu and ask again."
+            f"Language model not reachable:\n\n{llm_problem}\n\n"
+            "Open the Ollama app from the Start menu, then refresh this page."
         )
 
-has_result = "result" in st.session_state
-draw_examples(collapsed=has_result)
+    with st.form("ask"):
+        question = st.text_input(
+            "Your question",
+            key="question_box",
+            placeholder="e.g. What is the minimum attendance requirement?",
+        )
+        submitted = st.form_submit_button("Verify answer", type="primary")
 
-if has_result:
-    draw_answer(*st.session_state["result"], store)
+    # The examples are drawn into this slot further down, once we know whether
+    # there is an answer to show. Reserving the space here keeps them directly
+    # under the question box; filling it later lets the *first* answer collapse
+    # them too, which a plain top-to-bottom render cannot do.
+    examples_slot = st.container()
+
+
+    def draw_examples(collapsed: bool) -> None:
+        def buttons() -> None:
+            columns = st.columns(3)
+            for i, (kind, example) in enumerate(EXAMPLES):
+                columns[i % 3].button(
+                    example,
+                    key=f"example-{i}",
+                    help=kind,
+                    on_click=use_example,
+                    args=(example,),
+                    width="stretch",
+                )
+
+        with examples_slot:
+            if collapsed:
+                # Six full-width buttons between the question and the answer
+                # pushed every result below the fold.
+                with st.expander("Try another example", icon=":material/lightbulb:"):
+                    buttons()
+            else:
+                st.caption("Try one (each of these is answered from the policy documents):")
+                buttons()
+
+
+    to_run = question.strip() if submitted else st.session_state.pop("pending", None)
+
+    if to_run:
+        # Search every policy, with the configured number of passages.
+        policy = None
+        top_k = config.retrieval.top_k
+        try:
+            # A spinner while the answer is prepared; nothing is left behind once
+            # it is done (the timings are in the metrics row under the answer).
+            stage_slot = st.empty()
+            with st.spinner(""):
+                def show_stage(name: str) -> None:
+                    stage_slot.caption(STAGE_MESSAGES[name] + " …")
+
+                answer = answer_question(
+                    to_run,
+                    k=top_k,
+                    policy_type=policy,
+                    config=config,
+                    store=store,
+                    llm=llm,
+                    nli=nli,
+                    on_stage=show_stage,
+                )
+                # Same call the pipeline made, repeated so the passages can be
+                # shown. Retrieval is deterministic, so these are the same ones.
+                passages = retrieve(
+                    to_run, k=top_k, policy_type=policy, config=config, store=store
+                )
+            stage_slot.empty()
+            st.session_state["result"] = (answer, passages)
+        except (LLMError, GenerationError) as exc:
+            stage_slot.empty()
+            st.session_state.pop("result", None)
+            st.error(
+                f"Could not produce an answer: {exc}\n\n"
+                "If this says Ollama could not be reached, open the Ollama app from "
+                "the Start menu and ask again."
+            )
+
+    has_result = "result" in st.session_state
+    draw_examples(collapsed=has_result)
+
+    if has_result:
+        draw_answer(*st.session_state["result"], store)
 

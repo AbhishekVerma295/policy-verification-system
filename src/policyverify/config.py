@@ -91,11 +91,6 @@ class ChunkingConfig(BaseModel):
     # Show the summary to the answering model, labelled as context it must
     # not cite. Turn this off to measure whether the summary helps.
     summary_in_prompt: bool = True
-    # The model that writes the summaries, when it should differ from llm.model.
-    # Summaries are cached by model name, so without this, switching the
-    # answering model would discard every cached summary at the next build.
-    # None = use llm.model.
-    summary_model: str | None = None
 
 
 class RetrievalConfig(BaseModel):
@@ -166,13 +161,6 @@ class RetrievalConfig(BaseModel):
     # Has no effect on an index built before audience labels existed.
     audience_filter: bool = True
 
-    # Re-rank the best `rerank_depth` passages with the cross-encoder named in
-    # relevance.cross_encoder_model before taking top_k. Measured on 72
-    # answerable evaluation questions: the expected section reached the top 6
-    # for 71 (68 without), and each passage gets a 0-1 relevance probability.
-    rerank: bool = True
-    rerank_depth: int = 20
-
 
 class LLMConfig(BaseModel):
     """Which language model writes the draft answer.
@@ -181,18 +169,14 @@ class LLMConfig(BaseModel):
     running locally; the point of naming it here is that swapping it later is a
     config change rather than a code change.
 
-    temperature is 0.001 with a fixed seed so the same question gives the
-    same answer. This is not a style preference - a system whose output
-    changes between runs cannot be evaluated or debugged. It is 0.001 rather
-    than exactly 0 because some backends treat 0 as "use the default" and
-    others divide by it; 0.001 is greedy decoding in practice everywhere, and
-    the seed pins down any remaining sampling.
+    temperature is 0 so the same question gives the same answer. This is not a
+    style preference - a system whose output changes between runs cannot be
+    evaluated or debugged.
     """
 
     backend: str = "ollama"
     model: str = "qwen3.5:9b"  # backup: qwen3:4b (see config.yaml)
-    temperature: float = 0.001
-    seed: int = 42
+    temperature: float = 0.0
     # Hard ceiling so one bad question cannot hang the whole app. Generous,
     # because on a machine with no GPU a normal answer takes over a minute.
     timeout_seconds: int = 300
@@ -342,22 +326,6 @@ class RelevanceConfig(BaseModel):
     # False = gate off: every verified claim counts as relevant, exactly as
     # before the gate existed.
     enabled: bool = True
-    # Who decides whether a claim answers the question:
-    #   "llm"           - similarity, then one yes/no call to the language
-    #                     model for the borderline band (the original gate).
-    #   "cross_encoder" - a small query/passage relevance model scores each
-    #                     claim; no language-model call.
-    # Measured 2026-11-20 on 27 labelled cases (18 real answers, 9 true but
-    # off-topic traps): qwen2.5:3b as the judge kept only 6-7 of the 18
-    # answers with every prompt and output format tried - it reads a "no"
-    # ruling ("fees will not be refunded") as "no answer". The cross-encoder
-    # kept 18/18 and rejected 7/9 traps at a threshold of 0.3. The LLM judge
-    # was measured reliable on qwen3:4b (see verify/relevance.py).
-    judge: str = "cross_encoder"
-    cross_encoder_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-    cross_encoder_device: str = "cpu"
-    # Probability (0-1) at or above which a claim answers the question.
-    cross_encoder_threshold: float = 0.3
     # Cosine similarity (question with the retrieval query prefix, against the
     # claim text) at or above which the answer is on topic without asking the
     # model. Deliberately high: on the replayed answers, off-topic claims that
@@ -381,19 +349,6 @@ class RelevanceConfig(BaseModel):
     judge_max_claims: int = 6
 
 
-class AnswerConfig(BaseModel):
-    """How the answer is presented.
-
-    `compose`: after verification, the language model writes a short answer
-    from the KEPT claims only, and every sentence is checked against them
-    with the NLI model; unsupported sentences are removed (compose.py). It
-    costs one short model call - the prompt is the verified facts, not the
-    passages.
-    """
-
-    compose: bool = True
-
-
 class Config(BaseModel):
     """The whole configuration."""
 
@@ -406,7 +361,6 @@ class Config(BaseModel):
     verification: VerificationConfig = Field(default_factory=VerificationConfig)
     abstention: AbstentionConfig = Field(default_factory=AbstentionConfig)
     relevance: RelevanceConfig = Field(default_factory=RelevanceConfig)
-    answer: AnswerConfig = Field(default_factory=AnswerConfig)
 
     def fingerprint(self) -> dict[str, str]:
         """A short summary of the settings that affect results.
@@ -418,7 +372,6 @@ class Config(BaseModel):
             "llm_model": self.llm.model,
             "llm_backend": self.llm.backend,
             "llm_temperature": str(self.llm.temperature),
-            "llm_seed": str(self.llm.seed),
             "embedding_model": self.embedding.model_name,
             "nli_model": self.nli.model_name,
             "top_k": str(self.retrieval.top_k),
@@ -445,22 +398,6 @@ def load_config(path: Path | str | None = None) -> Config:
     # right model depends on the machine (a laptop with no GPU wants a smaller
     # one), and that should not require editing a committed file.
     #     set POLICYVERIFY_LLM_MODEL=qwen2.5:3b
-    # Before the environment variable: config.local.yaml, a per-machine file
-    # that is never committed (see .gitignore). It overrides config.yaml
-    # section by section, so a laptop can say "llm: {model: qwen2.5:3b}"
-    # once instead of every shell having to set the variable.
-    local_path = config_path.with_name("config.local.yaml")
-    if path is None and local_path.exists():
-        with open(local_path, encoding="utf-8") as f:
-            local = yaml.safe_load(f) or {}
-        merged = config.model_dump()
-        for section, values in local.items():
-            if isinstance(values, dict) and isinstance(merged.get(section), dict):
-                merged[section].update(values)
-            else:
-                merged[section] = values
-        config = Config.model_validate(merged)
-
     model = os.environ.get(LLM_MODEL_ENV, "").strip()
     if model:
         config.llm.model = model

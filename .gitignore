@@ -37,8 +37,6 @@ models/
 !eval/adversarial.jsonl
 !eval/claims.jsonl
 !eval/final_heldout.jsonl
-!eval/scenarios.jsonl
-!eval/sections/*.jsonl
 !eval/final_test.jsonl
 
 # --- Editors and OS --------------------------------------------------------
@@ -63,9 +61,3 @@ paper/
 # Evaluation results: the per-item run logs (*.jsonl, ignored above) are large
 # and local. The small *.summary.json files next to them ARE committed - they
 # are the benchmark results, and a result nobody can see is not a deliverable.
-
-# --- Per-machine settings and debug logs ----------------------------------
-# config.local.yaml overrides config.yaml on one machine only (for example a
-# smaller model on a laptop with no GPU). Prompt logs are debug output.
-config.local.yaml
-data/logs/

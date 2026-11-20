@@ -18,64 +18,17 @@ it see [`CONCEPTS.md`](CONCEPTS.md). For the final results in paper form see
 
 ---
 
-## Update 2026-11-20 (branch `ts/feat/evaluation`)
-
-Work on a laptop with no GPU, running `qwen2.5:3b`. Every number from this
-work is in [`eval/RESULTS_LOG.md`](eval/RESULTS_LOG.md), one row per change,
-all under the same fixed settings.
-
-> **Merged with `main` on 2026-11-20.** `main`'s measured settings win where
-> they differ (section 0.0 below): 1800/150 chunks, section summaries OFF,
-> entity boost OFF, audience filter OFF, model `qwen3.5:9b`. The code for each
-> is still here, switched off in `config.yaml`. This branch's later work - the
-> cross-encoder relevance judge and re-ranking, written answers, list
-> questions, the situation check, the polarity check, number words, the
-> scenario and per-section question sets, `config.local.yaml`, the prompt log
-> and temperature 0.001 with a seed - is kept alongside `main`'s data audit,
-> table-row check and seventh document. Section 0 below describes `main` as of
-2026-11-16 and its numbers (qwen3:4b, GPU) are not comparable with these.
-
-| Area | Change | Where |
-|---|---|---|
-| Chunking | 1800 -> 800 characters, 120 overlap; one LLM summary per section, used for search and shown as context, never as evidence | `indexing/chunk.py`, `indexing/summarize.py` |
-| Retrieval | Entity tags (parent, warden, day scholar ...) with a capped boost; cross-encoder re-ranking of the top 20 with a 0-1 relevance score | `entities.py`, `retrieve.py` |
-| Classification | Audience labels (student / parent_visitor / staff) and a filter - built, but **off**: qwen2.5:3b labelled every section "student" | `indexing/classify.py` |
-| Tables | PDF tables read row by row with column headers, like HTML tables; repeated-line stripping decided on plain text so citations do not move | `ingest/extract.py` |
-| Numbers | "75 percent", "95 Percentage", "24/7" and number words with a unit ("three days") are compared correctly | `verify/numeric.py` |
-| Relevance | Cross-encoder judge instead of the 3B LLM (18/18 answers kept vs 6/18 on 27 labelled cases); judge sees a normalised copy of the question | `verify/relevance.py` |
-| Scenarios | Prompt asks for rule + consequence + exception; `situation.py` compares the asker's figure with a verified threshold in code | `generate.py`, `situation.py` |
-| Citations | A `citation_id:` label copied in front of an ID is stripped; repeated claims are merged | `generate.py` |
-| Evaluation | 27 scenario questions (`eval/scenarios.jsonl`), use-case catalogue (`eval/USE_CASES.md`), drift check independent of chunk size | `eval/`, `evalset.py` |
-| Settings | temperature 0.001 + seed 42; `config.local.yaml` per machine; `POLICYVERIFY_LOG_PROMPTS=1` logs every model call | `config.py`, `llm.py` |
-| Interface | Answer box first with numbered sources and related sections (section graph); no step-by-step status panel | `app.py`, `graph.py` |
-
-Known and not fixed: sub-sections written inline ("R 3.6 ... ") are merged
-into the section before them by extraction, so `3.5-summer_semester` also
-holds 3.6 and 3.7. Splitting them would rename citation IDs the evaluation
-labels and paper data use.
-
----
-
-## 0. Current state (2026-11-16)
 ## 0. Current state (2026-11-16, with the 2026-11-20 update in 0.0)
 
 ### 0.0 Update 2026-11-20
 
-> **Which version the results describe.** The final test results (99 questions, `run-20261120-165959`)
-> were measured on **version 2**, tagged **`v2-final-test`** in git (commit `4ba60a4`). After that, a
-> teammate's work (PR #6) was merged into `main`, making **version 3**. It adds:
->
-> - a cross-encoder relevance check instead of the language-model yes/no;
-> - cross-encoder re-ranking of retrieved passages;
-> - situation answers (rule, consequence, exception);
-> - list answers, an answer composed from the verified facts, and a polarity check;
-> - the plagiarism-policy preamble kept at ingestion, which closes the `fb-29` gap.
->
-> Version 3 has **not** been run on the final test. Its first two changes target exactly the main
-> weakness the test found (17 of 25 wrong declines came from the relevance check). Any later result for
-> version 3 on this test set would be a second use of the set and must be reported as such. To
-> reproduce the reported results: `git checkout v2-final-test`, then `python scripts/ingest.py --offline`
-> and `python scripts/build_index.py`.
+> **Which version the results describe.** All final results were measured on **version 2**, tagged
+> **`v2-final-test`** in git. A teammate later proposed further changes (PR #6): a cross-encoder
+> relevance check, re-ranking, situation and list answers, composed answers, a polarity check and a
+> preamble fix. **Only its interface (`app.py`) was kept**; every other part was reverted to the tested
+> version, by the student's decision. So `main` = the tested version 2 plus the new interface. The
+> interface changes only how an answer is shown (answer first, numbered sources, a switch to show how
+> each statement was checked), not what the system answers. The PR #6 code remains in the git history.
 
 Full story, with every decision: `STUDY_GUIDE.md` sections 10.15–10.22.
 

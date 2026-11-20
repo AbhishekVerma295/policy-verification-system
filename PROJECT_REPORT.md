@@ -3,21 +3,13 @@
 **Project report** — Policy Verification System for SRM Institute of Science and Technology policies
 **Status:** final, 20 November 2026 (tested version: git tag `v2-final-test`; final test run `run-20261120-165959`)
 
-> **Which version the results describe.** The final test results (99 questions, `run-20261120-165959`)
-> were measured on **version 2**, tagged **`v2-final-test`** in git (commit `4ba60a4`). After that, a
-> teammate's work (PR #6) was merged into `main`, making **version 3**. It adds:
->
-> - a cross-encoder relevance check instead of the language-model yes/no;
-> - cross-encoder re-ranking of retrieved passages;
-> - situation answers (rule, consequence, exception);
-> - list answers, an answer composed from the verified facts, and a polarity check;
-> - the plagiarism-policy preamble kept at ingestion, which closes the `fb-29` gap.
->
-> Version 3 has **not** been run on the final test. Its first two changes target exactly the main
-> weakness the test found (17 of 25 wrong declines came from the relevance check). Any later result for
-> version 3 on this test set would be a second use of the set and must be reported as such. To
-> reproduce the reported results: `git checkout v2-final-test`, then `python scripts/ingest.py --offline`
-> and `python scripts/build_index.py`.
+> **Which version the results describe.** All final results were measured on **version 2**, tagged
+> **`v2-final-test`** in git. A teammate later proposed further changes (PR #6): a cross-encoder
+> relevance check, re-ranking, situation and list answers, composed answers, a polarity check and a
+> preamble fix. **Only its interface (`app.py`) was kept**; every other part was reverted to the tested
+> version, by the student's decision. So `main` = the tested version 2 plus the new interface. The
+> interface changes only how an answer is shown (answer first, numbered sources, a switch to show how
+> each statement was checked), not what the system answers. The PR #6 code remains in the git history.
 
 > **How to read this report.** Every number is **measured**, and the result file it comes from is
 > named beside it. Ranges in square brackets are 95% Wilson confidence intervals. Development numbers
@@ -299,7 +291,9 @@ weaker, verification adds accuracy; where it is stronger, verification mainly bu
 
 ## 7. The system in use (screenshots)
 
-Captured from the running app (`streamlit run app.py`, `qwen3.5:9b`) on 20 November 2026.
+Captured from the running app (`streamlit run app.py`, `qwen3.5:9b`) on 20 November 2026. Figures 1–9 show
+the interface used during the final test; Figure 10 shows the current interface (the same system,
+with the teammate's new layout).
 
 **Figure 1 — Start page.** One question box and example questions.
 
@@ -355,6 +349,11 @@ says "up to 2000". The claim is supported by the page, so it was kept, but the d
 two documents was not surfaced.
 
 ![Conflict not flagged](report/screenshots/09_limitation_conflict_not_flagged.png)
+
+**Figure 10 — The current interface.** The same verified answer as Figure 2 in the new layout: the
+answer first as a list with numbered sources, and a switch to show how each statement was checked.
+
+![Current interface](report/screenshots/10_current_interface.png)
 
 ---
 

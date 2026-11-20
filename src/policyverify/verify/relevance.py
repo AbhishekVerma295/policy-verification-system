@@ -67,10 +67,7 @@ model are both passed in, so tests substitute fakes.
 from __future__ import annotations
 
 import json
-import math
-import re
 from dataclasses import dataclass, field
-from functools import lru_cache
 from typing import Protocol
 
 from policyverify.config import Config, get_config
@@ -183,174 +180,14 @@ def _candidates(verdicts: list[ClaimVerdict], min_claim_score: float) -> list[in
 OFF_TOPIC_NOTE = "Supported by the policy, but it does not answer the question asked."
 
 
-class CrossEncoderRelevance:
-    """Scores (question, claim) pairs with a query/passage relevance model.
-
-    The model is trained for exactly this question - does this passage
-    answer this query (MS MARCO) - and reads both texts together, where the
-    embedding similarity compares them separately. Its output is turned into
-    a probability with a sigmoid, so the threshold means "how likely this
-    answers the question", 0 to 1. Loaded on first use.
-    """
-
-    def __init__(self, model_name: str, device: str = "cpu") -> None:
-        self.model_name = model_name
-        self.device = device
-        self._model = None
-
-    @property
-    def model(self):
-        if self._model is None:
-            from sentence_transformers import CrossEncoder
-
-            self._model = CrossEncoder(self.model_name, device=self.device)
-        return self._model
-
-    def scores(self, question: str, claims: list[str]) -> list[float]:
-        """Per claim, the best probability over the question's judge views."""
-        if not claims:
-            return []
-        views = judge_views(question)
-        pairs = [(v, c) for c in claims for v in views]
-        logits = self.model.predict(pairs, show_progress_bar=False)
-        probs = [1.0 / (1.0 + math.exp(-float(x))) for x in logits]
-        n = len(views)
-        return [max(probs[i * n:(i + 1) * n]) for i in range(len(claims))]
-
-
-# Words students use for an outcome the documents describe differently, each
-# with the corpus's OWN definition. The examination policy: "Detained
-# students should not be allowed to write the examinations on any account."
-# Measured: "...will i get detained?" scored 0.000 against "students become
-# ineligible to appear for the end semester examination"; with the corpus's
-# definition substituted it scored 0.976.
-_JUDGE_GLOSSARY = [
-    (re.compile(r"\b(?:get|be|am|being|been|is|are)\s+(?:de)?(?:tained|barred)\b", re.IGNORECASE),
-     "not be allowed to write the examinations"),
-    (re.compile(r"\b(?:detention|detained|debarred)\b", re.IGNORECASE),
-     "not allowed to write the examinations"),
-]
-# "attended 74 classes out of 100" -> "have 74% attendance". The count form
-# scored 0.0 where the percentage form scored 0.99 for the same rule.
-_ATTENDANCE_COUNT_RE = re.compile(
-    r"\b(?:have\s+)?(?:attended|attend)?\s*(\d+(?:\.\d+)?)\s+"
-    r"(?:classes|lectures|periods|hours|sessions|days)\s+(?:out\s+of|of|/)\s*(\d+(?:\.\d+)?)"
-    r"(?:\s+(?:classes|lectures|periods|hours|sessions|days))?",
-    re.IGNORECASE,
-)
-
-
-_OWN_ATTENDANCE_RE = re.compile(
-    r"\b(?:i|my|me)\b.*\b(?:attend\w*|classes|lectures)\b|\b(?:attend\w*|classes|lectures)\b.*\b(?:i|my|me)\b",
-    re.IGNORECASE,
-)
-
-
-def judge_views(question: str) -> list[str]:
-    """The question as asked, plus a normalised copy for the relevance judge.
-
-    Only the JUDGE sees the copy; retrieval and generation use the question
-    as asked. The copy changes nothing about meaning: an attendance count
-    becomes the percentage it is, and a student's word for an outcome is
-    replaced by the definition the policy itself gives.
-    """
-    view = question
-
-    def to_percent(m: re.Match) -> str:
-        part, whole = float(m.group(1)), float(m.group(2))
-        if whole <= 0 or part > whole:
-            return m.group(0)
-        return f"have {part / whole * 100:g}% attendance"
-
-    view = _ATTENDANCE_COUNT_RE.sub(to_percent, view)
-    for pattern, replacement in _JUDGE_GLOSSARY:
-        view = pattern.sub(replacement, view)
-    views = [question] if view == question else [question, view]
-    # A student's own attendance situation is a question about the attendance
-    # rule and what follows from it. Measured: "will I get detained?" judged
-    # the verified consequences ("registration will be treated as cancelled",
-    # "'I' grade") off topic; the rule's own question scores them as answers.
-    if _OWN_ATTENDANCE_RE.search(question):
-        views.append("What happens if a student's attendance is below the minimum required?")
-    return views
-
-
-# Questions whose answer IS a name: "Which software ...?", "Who is the
-# current Vice Chancellor?". "Who should I contact" is a procedure, not an
-# identity, so only "who is/are/was/were" counts.
-#
-# "Which" counts only before a noun whose answer is a proper name. "Which of
-# my published articles can be excluded from the check?" is answered by a
-# description ("only those published from the thesis, certified by the
-# supervisor"), and requiring a name there would decline a correct answer.
-_NAMED_THINGS = (
-    r"software|tools?|app|apps|application|website|portal|platform|company|"
-    r"companies|brand|bank|bus(?:es)?|routes?|vendor|agency|agencies|book|"
-    r"person|official|organi[sz]ation"
-)
-_NAME_QUESTION_RE = re.compile(
-    rf"\bwhich\s+(?:\w+\s+){{0,2}}(?:{_NAMED_THINGS})\b"
-    r"|\bwho\s+(?:is|are|was|were)\b|\bname\s+of\b|\bwhat\s+is\s+the\s+name\b",
-    re.IGNORECASE,
-)
-# A proper name or acronym: a run of Capitalised words / ACRONYMS / words
-# with digits ("SRM Merit Scholarship", "SRMJEEE", "Turnitin", "COE").
-_NAME_RE = re.compile(r"\b(?:[A-Z][A-Za-z0-9&'.-]*)(?:\s+(?:of|and|for|the|[A-Z][A-Za-z0-9&'.-]*))*")
-_NAME_STOPWORDS = {"the", "a", "an", "of", "and", "for", "in", "on", "to", "is", "are"}
-
-
-def asks_for_a_name(question: str) -> bool:
-    return _NAME_QUESTION_RE.search(question) is not None
-
-
-def names_something_new(claim: str, question: str, own_names: list[str]) -> bool:
-    """Does the claim contain a name that is not the question's own words
-    and not the institution's own name?
-
-    The cross-encoder's one measured failure, in the benchmark and in the
-    evaluation: "Which plagiarism detection software does the university
-    use?" -> "SRM Institute of Science and Technology will use the best
-    tools / software to detect plagiarism", scored 0.997. The claim is about
-    the software and names none - the only name in it is the university's.
-    """
-    q_words = {w.lower() for w in re.findall(r"[A-Za-z0-9]+", question)}
-    own = {w.lower() for name in own_names for w in re.findall(r"[A-Za-z0-9]+", name)}
-    # The first word of a sentence is capitalised whatever it is.
-    body = re.sub(r"^\s*\S+", "", claim)
-    def is_own(word: str) -> bool:
-        # "SRMIST" and "SRM IST" are the university's own name too.
-        return word in own or any(len(o) >= 3 and word.startswith(o) for o in own)
-
-    for match in _NAME_RE.finditer(body):
-        words = [w.lower() for w in re.findall(r"[A-Za-z0-9]+", match.group(0))]
-        new = [
-            w for w in words
-            if w not in _NAME_STOPWORDS and w not in q_words and not is_own(w)
-        ]
-        if new:
-            return True
-    return False
-
-
-@lru_cache(maxsize=2)
-def cross_encoder_for(model_name: str, device: str = "cpu") -> CrossEncoderRelevance:
-    """One shared instance per model, so the weights are loaded once."""
-    return CrossEncoderRelevance(model_name, device)
-
-
 def _mark(
-    verdict: ClaimVerdict,
-    relevant: bool,
-    similarity: float | None,
-    source: str,
-    score: float | None = None,
+    verdict: ClaimVerdict, relevant: bool, similarity: float | None, source: str
 ) -> ClaimVerdict:
     checks = verdict.checks.model_copy(
         update={
             "relevant": relevant,
             "relevance_similarity": None if similarity is None else round(similarity, 4),
             "relevance_source": source,
-            "relevance_score": None if score is None else round(score, 4),
         }
     )
     update: dict = {"checks": checks}
@@ -382,16 +219,8 @@ def assess_relevance(
     llm: LLMBackend | None = None,
     similarity: Similarity | None = None,
     config: Config | None = None,
-    cross_encoder: Similarity | None = None,
-    own_names: list[str] | None = None,
 ) -> RelevanceReport:
     """Judge whether the supported claims answer `question`.
-
-    With a `cross_encoder` (relevance.judge = "cross_encoder"), each claim is
-    scored on its own and kept when its probability reaches
-    `cross_encoder_threshold`; the language model is not asked. If the
-    cross-encoder fails, the gate below runs instead and the fallback is
-    recorded.
 
     The decision is made for the ANSWER first and then applied to its claims:
 
@@ -414,28 +243,6 @@ def assess_relevance(
     if not idx:
         return report
     texts = [verdicts[i].claim.text for i in idx]
-
-    # --- cross-encoder: one score per claim, no language model ----------
-    if cross_encoder is not None:
-        try:
-            probs = cross_encoder.scores(question, texts)
-        except Exception:  # noqa: BLE001 - fall back to the gate below, recorded
-            probs = None
-            report.judge_failed = True
-            report.notes.append("cross-encoder unavailable: similarity and judge decided")
-        if probs is not None:
-            out = list(verdicts)
-            needs_name = asks_for_a_name(question)
-            for k, i in enumerate(idx):
-                relevant = probs[k] >= cfg.cross_encoder_threshold
-                source = "cross_encoder"
-                if relevant and needs_name and not names_something_new(
-                    texts[k], question, own_names or []
-                ):
-                    relevant, source = False, "cross_encoder+name_check"
-                out[i] = _mark(verdicts[i], relevant, None, source, score=probs[k])
-            report.verdicts = out
-            return report
 
     sims: list[float] | None = None
     if similarity is not None:

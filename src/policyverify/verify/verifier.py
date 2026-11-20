@@ -75,7 +75,6 @@ from policyverify.schema import (
 from policyverify.verify.citation import CitationCheck, check_citations
 from policyverify.verify.nli import NLIChecker, NLIResult, is_table_row
 from policyverify.verify.numeric import check_numbers
-from policyverify.verify.polarity import flip_negation, has_negation, polarity_undecided
 from policyverify.verify.table import match_table_row
 
 
@@ -87,13 +86,6 @@ class _Scored:
     chunk_id: str
     result: NLIResult
 
-
-
-# How much LESS the opposite of a negative claim must be supported than the
-# claim itself (polarity.py). Measured on real claims: the two misleading
-# ones had gaps of 0.10 and 0.17; correct negative paraphrases had gaps of
-# 0.92 and more.
-_POLARITY_MARGIN = 0.2
 
 def _strongest(scored: list[_Scored]) -> tuple[_Scored, _Scored]:
     """The best-supporting and the most-contradicting result, across ALL
@@ -312,45 +304,6 @@ def verify_claim(
     fabricated = [c for c in citation_checks if c.fabricated]
     chunk_ids = [chunk.chunk_id for chunk in evidence_chunks]
     supported = best_entail.result.entailment >= threshold
-
-    # --- polarity: a negative paraphrase must beat its opposite ----------
-    # See polarity.py. Measured: "The number of classes attended does not
-    # affect the detention policy" scored 0.76 against a passage saying
-    # attendance DOES matter, and its positive twin scored 0.66 - the passage
-    # was matching words, not meaning. A word-for-word quote cannot have its
-    # meaning inverted, so quotes are not tested.
-    if supported and not best_entail.result.exact_quote and has_negation(claim.text):
-        twin = flip_negation(claim.text)
-        twin_entail = max(
-            nli.check(premise_with_heading(chunk), twin).entailment
-            for check in resolved
-            for chunk in check.chunks
-        )
-        if polarity_undecided(
-            best_entail.result.entailment, twin_entail, threshold, _POLARITY_MARGIN
-        ):
-            checks_neutral = CheckResults(
-                nli_label=best_entail.result.label,
-                nli_score=round(best_entail.result.score, 4),
-                numeric_ok=check_numbers(claim.text, premises).ok,
-                citation_exists=True,
-                citation_supports=False,
-                evidence_text=best_entail.result.window or None,
-                evidence_chunk_id=best_entail.chunk_id,
-            )
-            return ClaimVerdict(
-                claim=claim,
-                status=VerdictStatus.NEUTRAL,
-                score=round(best_entail.result.entailment * 0.5, 4),
-                evidence_chunk_ids=[chunk.chunk_id for chunk in evidence_chunks],
-                checks=checks_neutral,
-                explanation=(
-                    "The cited text does not settle this: it supports the opposite "
-                    f"statement (\"{twin}\") almost as well (confidence "
-                    f"{twin_entail:.2f} against {best_entail.result.entailment:.2f})."
-                ),
-            )
-
     conflict = _find_conflict(scored, threshold, config.nli.conflict_threshold) if supported else None
 
     # Which result to report in the checks panel: whichever decided the verdict.

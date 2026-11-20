@@ -62,23 +62,13 @@ def main() -> int:
         action="store_true",
         help="record the current cited-section hashes as the accepted baseline",
     )
-    parser.add_argument(
-        "--evalset",
-        help="question file to validate instead of eval/adversarial.jsonl; its "
-        "fingerprints are kept beside it as <name>_fingerprints.json",
-    )
     args = parser.parse_args()
-    evalset = Path(args.evalset) if args.evalset else None
-    # The default set keeps its historical fingerprint file name.
-    fingerprints = (
-        evalset.with_name(f"{evalset.stem}_fingerprints.json") if evalset else None
-    )
 
     print("=== Adversarial set validation ===\n")
 
     # --- 1. schema -------------------------------------------------------
     try:
-        items = load_evalset(evalset)
+        items = load_evalset()
     except (ValueError, FileNotFoundError) as exc:
         print(f"SCHEMA FAILED\n  {exc}")
         return 1
@@ -154,16 +144,15 @@ def main() -> int:
     current = fingerprint_citations(items, store)
 
     if args.update_fingerprints:
-        path = save_fingerprints(current, fingerprints)
+        path = save_fingerprints(current)
         print(f"  RECORDED - {len(current)} citation fingerprints written to")
         print(f"    {path}")
         print("  Only do this after checking the reported items by hand.")
         return 1 if failed else 0
 
-    recorded = load_fingerprints(fingerprints)
+    recorded = load_fingerprints()
     if recorded is None:
-        name = (fingerprints or FINGERPRINT_PATH).name
-        print(f"  no baseline yet ({name} does not exist)")
+        print(f"  no baseline yet ({FINGERPRINT_PATH.name} does not exist)")
         print("  run with --update-fingerprints to record the current state")
     else:
         drift = compare_fingerprints(recorded, current)
